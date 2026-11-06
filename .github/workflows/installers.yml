@@ -10,13 +10,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            script: dist:win
-          - os: macos-latest
-            script: dist:mac
-    # macOS minutes cost ten times more, and that installer also builds locally.
-    if: ${{ matrix.os != 'macos-latest' || startsWith(github.ref, 'refs/tags/') }}
+        # macOS minutes cost ten times more, and that installer also builds locally.
+        os: ${{ fromJSON(startsWith(github.ref, 'refs/tags/') && '["windows-latest", "macos-latest"]' || '["windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -29,7 +24,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm ${{ matrix.script }}
+      - run: pnpm ${{ matrix.os == 'windows-latest' && 'dist:win' || 'dist:mac' }}
       - uses: actions/upload-artifact@v4
         with:
           name: chronicle-${{ matrix.os }}
