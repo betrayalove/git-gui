@@ -30,6 +30,12 @@ describe('Chronicle', () => {
   }
   const row = (subject: string) => page.locator('.commit-row', { hasText: subject })
 
+  /** Waits until the running action finished and the list shows its result. */
+  const settled = async (): Promise<void> => {
+    await page.waitForTimeout(50)
+    await page.locator('.busy').waitFor({ state: 'detached' })
+  }
+
   /** Applies the open draft or plan and confirms the force-push that follows. */
   const applyAndPublish = async (): Promise<void> => {
     await page.getByRole('button', { name: 'Применить локально' }).click()
@@ -38,6 +44,7 @@ describe('Chronicle', () => {
     await page.getByRole('button', { name: 'Перезаписать на сервере' }).click()
     await expect.poll(async () => gitLine(bare, ['rev-parse', 'main'])).toBe(await gitLine(repo, ['rev-parse', 'HEAD']))
     await page.locator('.modal').waitFor({ state: 'detached' })
+    await settled()
   }
 
   beforeAll(async () => {
@@ -106,6 +113,7 @@ describe('Chronicle', () => {
     await page.getByRole('button', { name: 'Перезаписать на сервере' }).click()
     await expect.poll(async () => (await git(bare, ['log', '--format=%s', 'main'])).split('\n')).toContain('Опечатка в документации')
     expect(await gitLine(bare, ['rev-parse', 'main'])).toBe(await gitLine(repo, ['rev-parse', 'HEAD']))
+    await settled()
   })
 
   it('changes the author through the inspector', async () => {
@@ -117,12 +125,14 @@ describe('Chronicle', () => {
     await page.getByRole('button', { name: 'Перезаписать на сервере' }).waitFor()
     await page.getByRole('button', { name: 'Отмена' }).click()
     await expect.poll(() => gitLine(repo, ['log', '-1', '--format=%an|%ae', 'HEAD~1'])).toBe('Лёва|leva@example.com')
+    await settled()
   })
 
   it('undoes the last rewrite', async () => {
     await page.getByRole('button', { name: 'Отменить', exact: true }).first().click()
     await expect.poll(() => gitLine(repo, ['log', '-1', '--format=%an', 'HEAD~1'])).toBe('Ann Author')
     await expect.poll(() => row('Добавить поиск').count()).toBe(1)
+    await settled()
   })
 
   it('reorders commits by dragging', async () => {
@@ -152,6 +162,94 @@ describe('Chronicle', () => {
     await applyAndPublish()
     expect((await log())[0]).toBe('Добавить поиск')
     expect(await gitLine(repo, ['log', '-1', '--format=%B'])).toBe('Добавить поиск\n\nОпечатка в документации')
+  })
+
+  it('splits a commit by hunk', async () => {
+    const base = Array.from({ length: 30 }, (_, index) => `line ${index}`)
+    await commitFile(repo, 'big.txt', `${base.join('\n')}\n`, 'База большого файла')
+    const changed = [...base]
+    changed[2] = 'первая правка'
+    changed[25] = 'вторая правка'
+    await commitFile(repo, 'big.txt', `${changed.join('\n')}\n`, 'Две правки сразу')
+    await git(repo, ['push', '-q', 'origin', 'main'])
+    await row('Две правки сразу').waitFor()
+    await row('Две правки сразу').click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Разделить коммит…' }).click()
+    await page.locator('.split-check').first().waitFor()
+    await page.locator('.split-check input').first().check()
+    await page.getByLabel('Сообщение первого коммита').fill('Первая правка')
+    await page.getByLabel('Сообщение второго коммита').fill('Вторая правка')
+    await shot('15-split')
+    await page.getByRole('button', { name: 'Добавить в черновик' }).click()
+    await page.locator('.state-split').waitFor()
+    await page.getByRole('button', { name: 'Предпросмотр и применение' }).click()
+    await applyAndPublish()
+    expect((await log()).slice(0, 2)).toEqual(['Вторая правка', 'Первая правка'])
+    expect(await git(repo, ['show', '--format=', 'HEAD~1'])).toContain('+первая правка')
+    expect(await git(repo, ['show', '--format=', 'HEAD~1'])).not.toContain('+вторая правка')
+  })
+
+  it('resolves a conflict while reordering', async () => {
+    await commitFile(repo, 'c.txt', 'один\n', 'Версия один')
+    await commitFile(repo, 'c.txt', 'два\n', 'Версия два')
+    await commitFile(repo, 'c.txt', 'три\n', 'Версия три')
+    await git(repo, ['push', '-q', 'origin', 'main'])
+    await row('Версия три').waitFor()
+    await row('Версия три').dragTo(row('Версия два'), { targetPosition: { x: 400, y: 33 } })
+    await page.locator('.state-moved').first().waitFor()
+    await page.getByRole('button', { name: 'Предпросмотр и применение' }).click()
+    await page.getByRole('button', { name: 'Разрешить конфликт' }).click()
+    await page.locator('.conflict-block').first().waitFor()
+    await shot('16-conflict')
+    await page.getByRole('button', { name: 'Оставить это' }).nth(1).click()
+    await page.getByRole('button', { name: 'Сохранить и продолжить' }).click()
+    await page.getByRole('button', { name: 'Разрешить конфликт' }).click()
+    await page.getByRole('button', { name: 'Редактировать вручную' }).click()
+    await page.getByLabel('Содержимое файла').fill('финал\n')
+    await page.getByRole('button', { name: 'Сохранить и продолжить' }).click()
+    await page.getByRole('button', { name: 'Применить локально' }).waitFor()
+    await expect.poll(() => page.getByRole('button', { name: 'Применить локально' }).isEnabled()).toBe(true)
+    await applyAndPublish()
+    expect((await log()).slice(0, 2)).toEqual(['Версия два', 'Версия три'])
+    expect(await git(repo, ['show', 'HEAD:c.txt'])).toBe('финал\n')
+    expect(await git(repo, ['show', 'HEAD~1:c.txt'])).toBe('три\n')
+  })
+
+  it('stages one hunk from the changes view', async () => {
+    const original = (await git(repo, ['show', 'HEAD:big.txt'])).split('\n')
+    original[5] = 'кусок один'
+    original[28] = 'кусок два'
+    writeFileSync(join(repo, 'big.txt'), original.join('\n'))
+    await page.locator('.side-nav button', { hasText: 'Изменения' }).click()
+    await page.locator('.file-row', { hasText: 'big.txt' }).click()
+    await page.getByRole('button', { name: 'В индекс' }).nth(1).click()
+    await expect.poll(() => git(repo, ['diff', '--cached'])).toContain('+кусок два')
+    expect(await git(repo, ['diff', '--cached'])).not.toContain('+кусок один')
+    await expect.poll(() => page.getByRole('button', { name: 'В индекс' }).count()).toBe(1)
+    await shot('17-hunks')
+    await git(repo, ['restore', '--staged', '--worktree', 'big.txt'])
+    await page.locator('.side-nav button', { hasText: 'История' }).click()
+  })
+
+  it('resolves a merge conflict in the working tree', async () => {
+    await git(repo, ['switch', '-c', 'conflict-side'])
+    await commitFile(repo, 'm.txt', 'их версия\n', 'Боковая ветка')
+    await git(repo, ['switch', 'main'])
+    await commitFile(repo, 'm.txt', 'наша версия\n', 'Основная ветка')
+    await git(repo, ['merge', 'conflict-side'], { okCodes: [1] })
+    await page.locator('.side-nav button', { hasText: 'Изменения' }).click()
+    await page.locator('.conflict-block').first().waitFor()
+    await shot('18-merge-conflict')
+    await page.getByRole('button', { name: 'Оставить оба' }).click()
+    await page.getByRole('button', { name: 'Отметить решённым' }).click()
+    await expect.poll(() => git(repo, ['diff', '--name-only', '--diff-filter=U'])).toBe('')
+    await page.getByRole('button', { name: 'Завершить' }).click()
+    await expect.poll(() => gitLine(repo, ['log', '-1', '--format=%p']).then((parents) => parents.split(' ').length)).toBe(2)
+    expect(await git(repo, ['show', 'HEAD:m.txt'])).toBe('наша версия\nих версия\n')
+    await git(repo, ['branch', '-D', 'conflict-side'])
+    await git(repo, ['push', '-q', 'origin', 'main'])
+    await page.locator('.side-nav button', { hasText: 'История' }).click()
+    await row('Боковая ветка').waitFor()
   })
 
   it('renames a branch locally and on the server', async () => {
@@ -198,13 +296,14 @@ describe('Chronicle', () => {
     await page.locator('.side-nav button', { hasText: 'История' }).click()
     await git(repo, ['push', '-q', 'origin', 'main'])
     const tip = await gitLine(repo, ['rev-parse', 'HEAD'])
+    const below = await gitLine(repo, ['rev-parse', 'HEAD~1'])
     await row('Добавить заметку').click({ button: 'right' })
     await page.getByRole('menuitem', { name: /Снять 1 и опубликовать позже/ }).click()
     await shot('10-schedule-dialog')
     await page.getByRole('button', { name: 'Запланировать' }).click()
     await page.locator('.schedule-card').waitFor()
     await shot('11-schedule')
-    await expect.poll(() => gitLine(bare, ['log', '-1', '--format=%s', 'main'])).toBe('Добавить поиск')
+    await expect.poll(() => gitLine(bare, ['rev-parse', 'main'])).toBe(below)
     await page.getByRole('button', { name: 'Опубликовать сейчас' }).click()
     await page.getByRole('button', { name: 'Опубликовать', exact: true }).click()
     await expect.poll(() => gitLine(bare, ['rev-parse', 'main'])).toBe(tip)

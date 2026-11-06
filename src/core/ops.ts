@@ -1,4 +1,6 @@
-import type { Commit, PushPreview, RenameBranchResult } from '../shared/types'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import type { BlobContent, Commit, ConflictResolution, PushPreview, RenameBranchResult } from '../shared/types'
 import { git, gitLine, revParse, runGit } from './git'
 import { readCommits, readRefs, readRemotes } from './read'
 
@@ -26,6 +28,20 @@ export async function unstageFiles(cwd: string, paths: string[]): Promise<void> 
 export async function discardFiles(cwd: string, tracked: string[], untracked: string[]): Promise<void> {
   if (tracked.length) await git(cwd, ['restore', '--source=HEAD', '--staged', '--worktree', '--', ...tracked])
   if (untracked.length) await git(cwd, ['clean', '-f', '--', ...untracked])
+}
+
+export interface ApplyPatchOptions {
+  /** Change the index instead of the working tree. */
+  cached?: boolean
+  reverse?: boolean
+}
+
+/** Stages, unstages or discards individual hunks, depending on the options. */
+export async function applyPatch(cwd: string, patch: string, options: ApplyPatchOptions): Promise<void> {
+  const args = ['apply', '--recount', '--whitespace=nowarn']
+  if (options.cached) args.push('--cached')
+  if (options.reverse) args.push('--reverse')
+  await git(cwd, args, { input: patch })
 }
 
 export interface CommitOptions {
@@ -83,6 +99,72 @@ export async function abortOperation(cwd: string, operation: string): Promise<vo
   const args = commands[operation]
   if (!args) throw new Error(`Неизвестная операция: ${operation}`)
   await git(cwd, args)
+}
+
+export async function continueOperation(cwd: string, operation: string): Promise<void> {
+  const commands: Record<string, string[]> = {
+    merge: ['commit', '--no-edit'],
+    rebase: ['rebase', '--continue'],
+    'cherry-pick': ['cherry-pick', '--continue'],
+    revert: ['revert', '--continue']
+  }
+  const args = commands[operation]
+  if (!args) throw new Error(`Эту операцию нельзя продолжить: ${operation}`)
+  await git(cwd, args)
+}
+
+export interface WorktreeConflict {
+  path: string
+  base?: string
+  ours?: string
+  theirs?: string
+  mergedContent: BlobContent | null
+}
+
+export async function readWorktreeConflicts(cwd: string): Promise<WorktreeConflict[]> {
+  const raw = await git(cwd, ['ls-files', '--unmerged', '-z'])
+  const byPath = new Map<string, WorktreeConflict>()
+  for (const entry of raw.split('\0')) {
+    if (!entry) continue
+    const tab = entry.indexOf('\t')
+    const [, oid, stage] = entry.slice(0, tab).split(' ')
+    const path = entry.slice(tab + 1)
+    const conflict = byPath.get(path) ?? { path, mergedContent: null }
+    if (stage === '1') conflict.base = oid
+    else if (stage === '2') conflict.ours = oid
+    else if (stage === '3') conflict.theirs = oid
+    byPath.set(path, conflict)
+  }
+  const root = await gitLine(cwd, ['rev-parse', '--show-toplevel'])
+  for (const conflict of byPath.values()) {
+    try {
+      const bytes = await readFile(join(root, conflict.path))
+      conflict.mergedContent = {
+        text: bytes.includes(0) ? '' : bytes.toString('utf8'),
+        binary: bytes.includes(0),
+        tooLarge: false
+      }
+    } catch {
+      conflict.mergedContent = null
+    }
+  }
+  return [...byPath.values()]
+}
+
+/** Marks a conflicted file as resolved. Only paths git reports as unmerged are accepted. */
+export async function resolveWorktreeConflict(cwd: string, path: string, resolution: ConflictResolution): Promise<void> {
+  const unmerged = await git(cwd, ['ls-files', '--unmerged', '-z', '--', path])
+  if (!unmerged) throw new Error(`Файл не в конфликте: ${path}`)
+  const root = await gitLine(cwd, ['rev-parse', '--show-toplevel'])
+  if ('deleted' in resolution) {
+    await git(root, ['rm', '--quiet', '--force', '--', path])
+    return
+  }
+  const bytes = 'content' in resolution
+    ? Buffer.from(resolution.content, 'utf8')
+    : (await runGit(cwd, ['cat-file', 'blob', resolution.blob])).stdout
+  await writeFile(join(root, path), bytes)
+  await git(root, ['add', '--', path])
 }
 
 export async function cherryPick(cwd: string, sha: string): Promise<void> {

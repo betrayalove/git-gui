@@ -25,6 +25,7 @@ const paths: Record<string, ReactNode> = {
   warning: <><path d="M12 4l9 16H3z" /><path d="M12 10v4.5M12 17.2v.3" /></>,
   grip: <path d="M9 6v.1M15 6v.1M9 12v.1M15 12v.1M9 18v.1M15 18v.1" />,
   clock: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
+  split: <path d="M12 3v6M12 9L6 15v6M12 9l6 6v6" />,
   users: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.5-4 3-6 6.5-6s6 2 6.5 6M16 4.8a3.5 3.5 0 0 1 0 6.4M18.5 14.5c1.8.9 2.8 2.7 3 5.5" /></>
 }
 
@@ -49,12 +50,13 @@ export function Avatar({ name, email, size = 22 }: { name: string; email: string
   )
 }
 
-export function Modal({ title, onClose, children, footer, wide }: {
+export function Modal({ title, onClose, children, footer, wide, extraWide }: {
   title: string
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
   wide?: boolean
+  extraWide?: boolean
 }): ReactNode {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -65,7 +67,7 @@ export function Modal({ title, onClose, children, footer, wide }: {
   }, [onClose])
   return (
     <div className="modal-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <div className={`modal ${wide ? 'modal-wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`modal ${wide ? 'modal-wide' : ''} ${extraWide ? 'modal-xl' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <header className="modal-head">
           <h2>{title}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Закрыть"><Icon name="close" /></button>

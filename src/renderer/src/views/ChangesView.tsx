@@ -1,5 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { DiffResult, FileState, StatusFile } from '../../../shared/types'
+import type { WorktreeConflict } from '../../../core/ops'
+import { buildFilePatch } from '../../../shared/patch'
+import type { ConflictResolution, DiffResult, FileDiff, FileState, StatusFile } from '../../../shared/types'
+import { ConflictEditor } from '../components/ConflictEditor'
 import { ConfirmDialog, useDialogs } from '../components/dialogs'
 import { DiffView } from '../components/DiffView'
 import { EmptyState, Icon } from '../components/ui'
@@ -48,6 +51,53 @@ function FileRow({ file, state, staged, active, onSelect, onToggle, onDiscard }:
   )
 }
 
+const OURS_LABEL: Record<string, string> = {
+  merge: 'Текущая ветка',
+  rebase: 'Новая основа',
+  'cherry-pick': 'Текущая ветка',
+  revert: 'Текущая ветка'
+}
+
+const THEIRS_LABEL: Record<string, string> = {
+  merge: 'Вливаемая ветка',
+  rebase: 'Твой коммит',
+  'cherry-pick': 'Переносимый коммит',
+  revert: 'Отменяемый коммит'
+}
+
+function WorktreeConflictPane({ conflict, operation, onResolved }: {
+  conflict: WorktreeConflict
+  operation?: string
+  onResolved: () => void
+}): ReactNode {
+  const { client, run } = useRepo()
+  const [answer, setAnswer] = useState<ConflictResolution | null>(null)
+  return (
+    <div className="worktree-conflict">
+      <ConflictEditor
+        file={conflict}
+        mergedText={conflict.mergedContent}
+        oursLabel={OURS_LABEL[operation ?? ''] ?? 'Наша версия'}
+        theirsLabel={THEIRS_LABEL[operation ?? ''] ?? 'Их версия'}
+        initial={null}
+        onChange={setAnswer}
+      />
+      <div className="conflict-foot">
+        <button
+          className="btn btn-primary"
+          disabled={!answer}
+          onClick={() => void run('Сохраняю решение', async () => {
+            await client.resolveWorktreeConflict(conflict.path, answer!)
+            onResolved()
+          })}
+        >
+          <Icon name="check" size={14} />Отметить решённым
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function ChangesView(): ReactNode {
   const { snapshot, client, run, toast } = useRepo()
   const { show } = useDialogs()
@@ -58,8 +108,29 @@ export function ChangesView(): ReactNode {
   const status = snapshot?.status
   const files = status?.files ?? []
   const stagedFiles = files.filter((file) => file.staged)
-  const unstagedFiles = files.filter((file) => file.unstaged)
+  const unstagedFiles = files.filter((file) => file.unstaged && file.unstaged !== 'conflicted')
   const fingerprint = files.map((file) => `${file.path}:${file.staged}:${file.unstaged}`).join('|')
+  const [refreshCount, setRefreshCount] = useState(0)
+  const [conflicts, setConflicts] = useState<WorktreeConflict[]>([])
+  const [activeConflict, setActiveConflict] = useState<string | null>(null)
+  const hasConflictedFiles = files.some((file) => file.unstaged === 'conflicted')
+
+  useEffect(() => {
+    if (!hasConflictedFiles) {
+      setConflicts([])
+      setActiveConflict(null)
+      return
+    }
+    let cancelled = false
+    client.readWorktreeConflicts()
+      .then((result) => {
+        if (cancelled) return
+        setConflicts(result)
+        setActiveConflict((current) => (result.some((item) => item.path === current) ? current : result[0]?.path ?? null))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [client, fingerprint, hasConflictedFiles])
 
   useEffect(() => {
     if (!selection) {
@@ -71,7 +142,34 @@ export function ChangesView(): ReactNode {
       .then((result) => { if (!cancelled) setDiff(result) })
       .catch(() => { if (!cancelled) setDiff({ files: [], truncated: false }) })
     return () => { cancelled = true }
-  }, [client, selection, fingerprint])
+  }, [client, selection, fingerprint, refreshCount])
+
+  const hunkAction = (label: string, action: () => Promise<void>): void => {
+    void run(label, async () => {
+      await action()
+      setRefreshCount((count) => count + 1)
+    })
+  }
+
+  const hunkControls = (file: FileDiff, index: number): ReactNode => {
+    if (!selection || selection.untracked) return null
+    const patch = buildFilePatch(file, [index])
+    if (selection.staged) {
+      return <button className="btn btn-small" onClick={() => hunkAction('Убираю кусок', () => client.applyPatch(patch, { cached: true, reverse: true }))}>Убрать из индекса</button>
+    }
+    return (
+      <>
+        <button className="btn btn-small" onClick={() => hunkAction('Добавляю кусок', () => client.applyPatch(patch, { cached: true }))}>В индекс</button>
+        <button className="btn btn-small btn-ghost" onClick={() => show(<ConfirmDialog
+          title="Отменить кусок правок"
+          danger
+          confirmLabel="Отменить правки"
+          body="Эти строки вернутся к версии из индекса. Это нельзя отменить."
+          onConfirm={() => hunkAction('Отменяю кусок', () => client.applyPatch(patch, { reverse: true }))}
+        />)}>Отменить</button>
+      </>
+    )
+  }
 
   const doCommit = async (thenPush: boolean): Promise<void> => {
     const done = await run('Создаю коммит', async () => {
@@ -105,12 +203,34 @@ export function ChangesView(): ReactNode {
           <div className="banner warn">
             <Icon name="warning" />
             <div>
-              Идёт операция: {status.operation}. Разреши конфликты в редакторе, добавь файлы в индекс и закоммить, либо отмени её.
-              <button className="btn btn-ghost btn-small" onClick={() => void run('Отменяю операцию', () => client.abortOperation(status.operation!))}>Отменить операцию</button>
+              {conflicts.length
+                ? `Идёт операция ${status.operation}. Осталось разрешить файлов: ${conflicts.length}.`
+                : `Идёт операция ${status.operation}. Конфликтов больше нет, её можно завершить.`}
+              <div className="banner-actions">
+                {status.operation !== 'bisect' && (
+                  <button
+                    className="btn btn-primary btn-small"
+                    disabled={conflicts.length > 0}
+                    onClick={() => void run('Завершаю операцию', () => client.continueOperation(status.operation!))}
+                  >Завершить</button>
+                )}
+                <button className="btn btn-ghost btn-small" onClick={() => void run('Отменяю операцию', () => client.abortOperation(status.operation!))}>Отменить операцию</button>
+              </div>
             </div>
           </div>
         )}
         <div className="file-list">
+          {conflicts.length > 0 && (
+            <>
+              <header className="list-head"><span>Конфликты</span><span className="count">{conflicts.length}</span></header>
+              {conflicts.map((conflict) => (
+                <div key={conflict.path} className={`file-row ${activeConflict === conflict.path ? 'active' : ''}`} onClick={() => setActiveConflict(conflict.path)}>
+                  <span className="file-badge file-conflicted">!</span>
+                  <span className="file-path truncate" title={conflict.path}><b>{conflict.path}</b></span>
+                </div>
+              ))}
+            </>
+          )}
           <header className="list-head">
             <span>В индексе</span><span className="count">{stagedFiles.length}</span>
             {stagedFiles.length > 0 && <button className="link" onClick={() => void run('Убираю из индекса', () => client.unstageFiles(stagedFiles.map((file) => file.path)))}>Убрать все</button>}
@@ -163,7 +283,14 @@ export function ChangesView(): ReactNode {
         </div>
       </div>
       <div className="changes-diff">
-        {selection ? <DiffView diff={diff} /> : <EmptyState icon="changes" title={files.length ? 'Выбери файл' : 'Рабочая папка чистая'}>{files.length ? 'Его изменения появятся здесь.' : 'Незакоммиченных правок нет.'}</EmptyState>}
+        {activeConflict && conflicts.some((item) => item.path === activeConflict) ? (
+          <WorktreeConflictPane
+            key={activeConflict}
+            conflict={conflicts.find((item) => item.path === activeConflict)!}
+            operation={status?.operation}
+            onResolved={() => setRefreshCount((count) => count + 1)}
+          />
+        ) : selection ? <DiffView diff={diff} actions={{ hunk: hunkControls }} /> : <EmptyState icon="changes" title={files.length ? 'Выбери файл' : 'Рабочая папка чистая'}>{files.length ? 'Его изменения появятся здесь.' : 'Незакоммиченных правок нет.'}</EmptyState>}
       </div>
     </div>
   )

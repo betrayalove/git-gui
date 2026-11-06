@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type {
   CommitEdit,
+  ConflictFile,
+  ConflictResolution,
   JournalEntry,
   RefUpdate,
   RewriteConflict,
@@ -188,17 +190,89 @@ class CommitBatch {
 interface MergeOutcome {
   tree: string | null
   files: string[]
+  /** The result with conflict markers; present only on a conflict. */
+  conflictTree?: string
+  details: ConflictFile[]
 }
 
 async function mergeTrees(cwd: string, base: string, ours: string, theirs: string): Promise<MergeOutcome> {
   const { stdout, code } = await runGit(
     cwd,
-    ['merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', `--merge-base=${base}`, ours, theirs],
+    ['merge-tree', '--write-tree', '--no-messages', '-z', `--merge-base=${base}`, ours, theirs],
     { okCodes: [1] }
   )
   const parts = stdout.toString('utf8').split('\0').filter(Boolean)
-  if (code === 0) return { tree: parts[0].trim(), files: [] }
-  return { tree: null, files: [...new Set(parts.slice(1))] }
+  if (code === 0) return { tree: parts[0].trim(), files: [], details: [] }
+  const conflictTree = parts[0].trim()
+  const byPath = new Map<string, ConflictFile>()
+  for (const entry of parts.slice(1)) {
+    const tab = entry.indexOf('\t')
+    const [, oid, stage] = entry.slice(0, tab).split(' ')
+    const path = entry.slice(tab + 1)
+    const file = byPath.get(path) ?? { path }
+    if (stage === '1') file.base = oid
+    else if (stage === '2') file.ours = oid
+    else if (stage === '3') file.theirs = oid
+    byPath.set(path, file)
+  }
+  for (const file of byPath.values()) {
+    const { stdout: merged, code: found } = await runGit(cwd, ['rev-parse', '--verify', '--quiet', `${conflictTree}:${file.path}`], { okCodes: [1] })
+    if (found === 0) file.merged = merged.toString('utf8').trim()
+  }
+  return { tree: null, files: [...byPath.keys()], conflictTree, details: [...byPath.values()] }
+}
+
+/** Runs git commands against a throwaway index, so the user's index and files stay untouched. */
+async function withTemporaryIndex<T>(
+  cwd: string,
+  tree: string,
+  action: (env: Record<string, string>) => Promise<T>
+): Promise<{ result: T; tree: string }> {
+  const directory = await mkdtemp(join(tmpdir(), 'chronicle-index-'))
+  const env = { GIT_INDEX_FILE: join(directory, 'index') }
+  try {
+    await git(cwd, ['read-tree', tree], { env })
+    const result = await action(env)
+    return { result, tree: await gitLine(cwd, ['write-tree'], { env }) }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}
+
+async function applyResolutions(
+  cwd: string,
+  outcome: MergeOutcome,
+  resolutions: Record<string, ConflictResolution>
+): Promise<string> {
+  const { tree } = await withTemporaryIndex(cwd, outcome.conflictTree!, async (env) => {
+    for (const file of outcome.details) {
+      const resolution = resolutions[file.path]
+      if ('deleted' in resolution) {
+        await git(cwd, ['update-index', '--force-remove', '--', file.path], { env })
+        continue
+      }
+      const blob = 'blob' in resolution
+        ? resolution.blob
+        : await gitLine(cwd, ['hash-object', '-w', '--no-filters', '--stdin'], { input: resolution.content })
+      const existing = await git(cwd, ['ls-tree', '-z', outcome.conflictTree!, '--', file.path])
+      const mode = existing ? existing.split(' ')[0] : '100644'
+      await git(cwd, ['update-index', '--add', '--cacheinfo', `${mode},${blob},${file.path}`], { env })
+    }
+  })
+  return tree
+}
+
+/** The tree of `tree` plus `patch`, or null when the patch no longer applies. */
+async function treeWithPatch(cwd: string, tree: string, patch: string): Promise<string | null> {
+  try {
+    const applied = await withTemporaryIndex(cwd, tree, (env) =>
+      git(cwd, ['apply', '--cached', '--recount', '--whitespace=nowarn'], { env, input: patch })
+    )
+    return applied.tree
+  } catch (error) {
+    if (error instanceof GitError) return null
+    throw error
+  }
 }
 
 function subjectOf(commit: RawCommit): string {
@@ -281,6 +355,9 @@ function validateSequence(
   const firstKept = todo.find((item) => item.action !== 'drop')
   if (firstKept && firstKept.action !== 'pick') {
     throw new Error('Первый оставшийся коммит участка нельзя объединить с предыдущим')
+  }
+  if (todo.some((item) => item.split && item.action !== 'pick')) {
+    throw new Error('Разделённый коммит нельзя удалять или объединять')
   }
 }
 
@@ -383,9 +460,18 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
     const ontoTree = treeOf(onto)
     if (parentTree === ontoTree) return source.tree
     if (source.tree === parentTree) return ontoTree
-    const merged = await mergeTrees(cwd, parentTree, ontoTree, source.tree)
+    return mergeOrResolve(source, parentTree, ontoTree)
+  }
+
+  /** Merges a commit's change, using the user's earlier answers if they cover every file. */
+  const mergeOrResolve = async (source: RawCommit, base: string, ours: string): Promise<string | null> => {
+    const merged = await mergeTrees(cwd, base, ours, source.tree)
     if (merged.tree) return merged.tree
-    conflicts.push({ sha: source.sha, subject: subjectOf(source), files: merged.files, reason: 'content' })
+    const answers = plan.resolutions?.[source.sha]
+    if (answers && merged.details.every((file) => answers[file.path])) {
+      return applyResolutions(cwd, merged, answers)
+    }
+    conflicts.push({ sha: source.sha, subject: subjectOf(source), files: merged.files, details: merged.details, reason: 'content' })
     return null
   }
 
@@ -416,6 +502,14 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
         await flush()
         const tree = await replayTree(source, current)
         if (tree === null) return false
+        if (item.split) {
+          const firstTree = await treeWithPatch(cwd, treeOf(current), item.split.patch)
+          if (!firstTree) {
+            conflicts.push({ sha: source.sha, subject: subjectOf(source), files: [], reason: 'split' })
+            return false
+          }
+          current = write(source, current ? [current] : [], firstTree, { ...edits[item.sha], message: item.split.message })
+        }
         group = {
           head: source, parent: current, tree,
           messages: [source.message.replace(/\s+$/, '')],
@@ -428,12 +522,8 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
       const parentTree = source.parents.length ? treeOf(source.parents[0]) : emptyTree
       let tree: string | null = source.tree
       if (parentTree !== group.tree) {
-        const merged = await mergeTrees(cwd, parentTree, group.tree, source.tree)
-        if (!merged.tree) {
-          conflicts.push({ sha: source.sha, subject: subjectOf(source), files: merged.files, reason: 'content' })
-          return false
-        }
-        tree = merged.tree
+        tree = await mergeOrResolve(source, parentTree, group.tree)
+        if (tree === null) return false
       }
       group.tree = tree
       group.members.push(item.sha)

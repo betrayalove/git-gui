@@ -86,6 +86,8 @@ export interface FileDiff {
   binary: boolean
   additions: number
   deletions: number
+  /** Raw patch lines before the first hunk. */
+  header: string[]
   hunks: DiffHunk[]
 }
 
@@ -107,9 +109,16 @@ export interface CommitEdit {
 
 export type TodoAction = 'pick' | 'squash' | 'fixup' | 'drop'
 
+/** Splits a commit in two: the patch and message become a new commit right below the rest. */
+export interface CommitSplit {
+  patch: string
+  message: string
+}
+
 export interface TodoItem {
   sha: string
   action: TodoAction
+  split?: CommitSplit
 }
 
 /** A new order for the linear range base..tip of a branch, oldest first. */
@@ -125,13 +134,28 @@ export interface RewritePlan {
   removePaths?: string[]
   pruneEmpty?: boolean
   description?: string
+  /** Conflict answers by commit and path, from an earlier preview of this same plan. */
+  resolutions?: Record<string, Record<string, ConflictResolution>>
+}
+
+export type ConflictResolution = { content: string } | { blob: string } | { deleted: true }
+
+/** Blob ids of one conflicted file. A missing side means the file does not exist there. */
+export interface ConflictFile {
+  path: string
+  base?: string
+  ours?: string
+  theirs?: string
+  /** The file with conflict markers. */
+  merged?: string
 }
 
 export interface RewriteConflict {
   sha: string
   subject: string
   files: string[]
-  reason: 'content' | 'merge-commit'
+  reason: 'content' | 'merge-commit' | 'split'
+  details?: ConflictFile[]
 }
 
 export interface RefUpdate {
@@ -204,4 +228,10 @@ export interface RenameBranchResult {
   remoteCreated: boolean
   remoteDeleted: boolean
   warnings: string[]
+}
+
+export interface BlobContent {
+  text: string
+  binary: boolean
+  tooLarge: boolean
 }

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyDraftToCommits, buildPlan, draftChangeCount, EMPTY_DRAFT, isSequenceChanged, linearChain,
-  moveInSequence, setAction, squashInSequence, startSequence
+  moveInSequence, setAction, setSplit, squashInSequence, startSequence
 } from '../src/shared/draft'
+import { hasConflictMarkers, parseConflictMarkers } from '../src/shared/patch'
 import { layoutGraph } from '../src/shared/graph'
 import type { Commit } from '../src/shared/types'
 import { applyRewrite } from '../src/core/rewrite'
@@ -18,6 +19,32 @@ function commit(sha: string, parents: string[] = []): Commit {
 
 // d - c - b - a, newest first
 const line = [commit('d', ['c']), commit('c', ['b']), commit('b', ['a']), commit('a')]
+
+describe('conflict markers', () => {
+  it('splits text and conflicts', () => {
+    const segments = parseConflictMarkers('top\n<<<<<<< a\nours\n=======\ntheirs\n>>>>>>> b\nbottom\n')
+    expect(segments).toEqual([
+      { kind: 'text', text: 'top\n' },
+      { kind: 'conflict', ours: 'ours\n', base: undefined, theirs: 'theirs\n', oursLabel: 'a', theirsLabel: 'b' },
+      { kind: 'text', text: 'bottom\n' }
+    ])
+  })
+
+  it('reads the diff3 style', () => {
+    const [segment] = parseConflictMarkers('<<<<<<< a\nours\n||||||| base\norig\n=======\ntheirs\n>>>>>>> b\n')
+    expect(segment).toMatchObject({ kind: 'conflict', ours: 'ours\n', base: 'orig\n', theirs: 'theirs\n' })
+  })
+
+  it('leaves an unterminated marker as plain text', () => {
+    expect(hasConflictMarkers('<<<<<<< a\nnever closed\n')).toBe(false)
+    expect(parseConflictMarkers('<<<<<<< a\nnever closed\n').map((part) => part.kind)).toEqual(['text'])
+  })
+
+  it('handles CRLF and an empty side', () => {
+    const [segment] = parseConflictMarkers('<<<<<<< a\r\n=======\r\ntheirs\r\n>>>>>>> b\r\n')
+    expect(segment).toMatchObject({ kind: 'conflict', ours: '', theirs: 'theirs\r\n' })
+  })
+})
 
 describe('graph layout', () => {
   it('keeps a linear history in one lane', () => {
@@ -108,6 +135,19 @@ describe('draft', () => {
       sequence: moveInSequence(startSequence(history, 'main', 'd')!, 'd', 'c', 'below')
     })
     expect(shown[0].parents).toEqual(['c'])
+  })
+
+  it('marks a split, keeps it out of trimming, and removes it', () => {
+    const split = setSplit(sequence(), 'b', { patch: 'p', message: 'm' })
+    expect(isSequenceChanged(line, split)).toBe(true)
+    expect(draftChangeCount(line, { edits: {}, sequence: split })).toBe(1)
+    const plan = buildPlan(line, { edits: {}, sequence: split })
+    expect(plan.sequence?.base).toBe('a')
+    expect(plan.sequence?.todo[0]).toEqual({ sha: 'b', action: 'pick', split: { patch: 'p', message: 'm' } })
+    const shown = applyDraftToCommits(line, { edits: {}, sequence: split })
+    expect(shown.find((entry) => entry.sha === 'b')?.draftStates).toContain('split')
+    expect(isSequenceChanged(line, setSplit(split, 'b', undefined))).toBe(false)
+    expect(setAction(split, 'b', 'drop').todo.find((item) => item.sha === 'b')?.split).toBeUndefined()
   })
 
   it('counts changes and ignores empty edits', () => {

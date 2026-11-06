@@ -1,8 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { EMPTY_DRAFT } from '../../../shared/draft'
-import type { Commit, CommitEdit, PushPreview, RewritePlan, RewritePreview } from '../../../shared/types'
+import type { Commit, CommitEdit, ConflictResolution, DiffResult, PushPreview, RewriteConflict, RewritePlan, RewritePreview } from '../../../shared/types'
+import { buildPatch } from '../../../shared/patch'
 import { dateToLocalInput, plural, shortSha } from '../format'
 import { useRepo } from '../store'
+import { ConflictEditor } from './ConflictEditor'
+import { DiffView } from './DiffView'
 import { Avatar, Icon, Modal } from './ui'
 
 interface DialogContextValue {
@@ -99,16 +102,67 @@ function CommitLine({ commit }: { commit: Commit }): ReactNode {
   )
 }
 
+function ConflictWalkthrough({ conflict, onDone, onBack }: {
+  conflict: RewriteConflict
+  onDone: (answers: Record<string, ConflictResolution>) => void
+  onBack: () => void
+}): ReactNode {
+  const files = conflict.details ?? []
+  const [active, setActive] = useState(files[0]?.path)
+  const [answers, setAnswers] = useState<Record<string, ConflictResolution | null>>({})
+  const file = files.find((item) => item.path === active) ?? files[0]
+  const complete = files.every((item) => answers[item.path])
+  return (
+    <>
+      <p className="prose">Коммит <b>{conflict.subject}</b> конфликтует с новым порядком. Выбери, что должно получиться.</p>
+      {files.length > 1 && (
+        <div className="conflict-tabs">
+          {files.map((item) => (
+            <button key={item.path} className={item.path === file?.path ? 'active' : ''} onClick={() => setActive(item.path)}>
+              {answers[item.path] && <Icon name="check" size={12} />}
+              {item.path}
+            </button>
+          ))}
+        </div>
+      )}
+      {file && (
+        <ConflictEditor
+          key={file.path}
+          file={file}
+          oursLabel="История до этого коммита"
+          theirsLabel="Этот коммит"
+          initial={answers[file.path] ?? null}
+          onChange={(resolution) => setAnswers((current) => ({ ...current, [file.path]: resolution }))}
+        />
+      )}
+      <div className="conflict-foot">
+        <button className="btn btn-ghost" onClick={onBack}>Назад</button>
+        <button
+          className="btn btn-primary"
+          disabled={!complete}
+          onClick={() => onDone(Object.fromEntries(files.map((item) => [item.path, answers[item.path]!])))}
+        >
+          Сохранить и продолжить
+        </button>
+      </div>
+    </>
+  )
+}
+
 /** Shows what a plan will do and applies it. Called for drafts and for history cleanup alike. */
-export function ReviewDialog({ plan }: { plan: RewritePlan }): ReactNode {
+export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNode {
   const { client, setDraft, toast, run, selected, setSelected } = useRepo()
   const { close, show } = useDialogs()
+  const [resolutions, setResolutions] = useState<NonNullable<RewritePlan['resolutions']>>({})
+  const plan = useMemo<RewritePlan>(() => ({ ...basePlan, resolutions }), [basePlan, resolutions])
   const [preview, setPreview] = useState<RewritePreview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
+  const [resolving, setResolving] = useState(false)
 
   useEffect(() => {
     let cancelled = false
+    setPreview(null)
     client.previewRewrite(plan)
       .then((result) => { if (!cancelled) setPreview(result) })
       .catch((reason: Error) => { if (!cancelled) setError(reason.message) })
@@ -138,6 +192,22 @@ export function ReviewDialog({ plan }: { plan: RewritePlan }): ReactNode {
   }
 
   const canApply = preview && !preview.conflicts.length && !preview.blockers.length && preview.refUpdates.length > 0
+  const resolvable = preview?.conflicts.find((conflict) => conflict.reason === 'content' && conflict.details?.length)
+  if (resolving && resolvable) {
+    return (
+      <Modal title="Разрешение конфликта" extraWide onClose={close}>
+        <ConflictWalkthrough
+          key={resolvable.sha}
+          conflict={resolvable}
+          onBack={() => setResolving(false)}
+          onDone={(answers) => {
+            setResolving(false)
+            setResolutions((current) => ({ ...current, [resolvable.sha]: answers }))
+          }}
+        />
+      </Modal>
+    )
+  }
   return (
     <Modal
       title="Предпросмотр изменений"
@@ -168,10 +238,16 @@ export function ReviewDialog({ plan }: { plan: RewritePlan }): ReactNode {
                 <b>
                   {conflict.reason === 'merge-commit'
                     ? `Merge-коммит «${conflict.subject}» нельзя пересоздать точно.`
-                    : `Конфликт в коммите «${conflict.subject}».`}
+                    : conflict.reason === 'split'
+                      ? `Разделение коммита «${conflict.subject}» больше не применяется.`
+                      : `Конфликт в коммите «${conflict.subject}».`}
                 </b>
                 {conflict.files.length > 0 && <div className="mono-list">{conflict.files.join(', ')}</div>}
-                <div>Измени порядок так, чтобы коммит не зависел от перемещённых правок. Разрешение конфликтов появится на следующем этапе.</div>
+                {conflict.reason === 'merge-commit' && <div>Измени порядок так, чтобы содержимое до merge-коммита осталось прежним.</div>}
+                {conflict.reason === 'split' && <div>Отмени разделение или верни прежний порядок коммитов, затем раздели заново.</div>}
+                {conflict.reason === 'content' && (
+                  <button className="btn btn-small" onClick={() => setResolving(true)}>Разрешить конфликт</button>
+                )}
               </div>
             </div>
           ))}
@@ -437,6 +513,95 @@ export function ScheduleDialog({ branch, count }: { branch: string; count: numbe
       <p className="hint">
         Chronicle должен быть запущен в это время, он будет ждать в трее. Если компьютер был выключен, публикация выполнится при следующем запуске. Снятые коммиты могли успеть скачать другие, и по прямому SHA они могут оставаться доступны на сервере.
       </p>
+    </Modal>
+  )
+}
+
+export function SplitCommitDialog({ commit, onConfirm }: {
+  commit: Commit
+  onConfirm: (split: { patch: string; message: string }, secondMessage: string) => void
+}): ReactNode {
+  const { client } = useRepo()
+  const { close } = useDialogs()
+  const [diff, setDiff] = useState<DiffResult | null>(null)
+  const [chosen, setChosen] = useState<Set<string>>(new Set())
+  const [firstMessage, setFirstMessage] = useState('')
+  const [secondMessage, setSecondMessage] = useState(commit.message)
+
+  useEffect(() => {
+    let cancelled = false
+    client.commitDiff(commit.sha)
+      .then((result) => { if (!cancelled) setDiff(result) })
+      .catch(() => { if (!cancelled) setDiff({ files: [], truncated: false }) })
+    return () => { cancelled = true }
+  }, [client, commit.sha])
+
+  const parts = useMemo(() => {
+    const keys: string[] = []
+    for (const file of diff?.files ?? []) {
+      if (file.binary) continue
+      if (file.hunks.length) file.hunks.forEach((_, index) => keys.push(`${file.path}\0${index}`))
+      else keys.push(`${file.path}\0file`)
+    }
+    return keys
+  }, [diff])
+  const toggle = (key: string): void => {
+    setChosen((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+  const box = (key: string): ReactNode => (
+    <label className="split-check">
+      <input type="checkbox" checked={chosen.has(key)} onChange={() => toggle(key)} />
+      В первый коммит
+    </label>
+  )
+  const binaryCount = diff?.files.filter((file) => file.binary).length ?? 0
+  const everything = chosen.size === parts.length && binaryCount === 0
+  const valid = chosen.size > 0 && !everything && firstMessage.trim() && secondMessage.trim() && !diff?.truncated
+  const submit = (): void => {
+    const selections = (diff?.files ?? []).flatMap((file) => {
+      if (chosen.has(`${file.path}\0file`)) return [{ file, hunks: [] as number[] }]
+      const hunks = file.hunks.map((_, index) => index).filter((index) => chosen.has(`${file.path}\0${index}`))
+      return hunks.length ? [{ file, hunks }] : []
+    })
+    close()
+    onConfirm({ patch: buildPatch(selections), message: firstMessage.trim() }, secondMessage.trim())
+  }
+  return (
+    <Modal
+      title="Разделить коммит"
+      extraWide
+      onClose={close}
+      footer={<>
+        <span className="foot-note">Выбрано кусков: {chosen.size} из {parts.length}. Остальное попадёт во второй коммит.</span>
+        <button className="btn btn-ghost" onClick={close}>Отмена</button>
+        <button className="btn btn-primary" disabled={!valid} onClick={submit}>Добавить в черновик</button>
+      </>}
+    >
+      {diff?.truncated && <div className="banner warn"><Icon name="warning" />Коммит слишком большой, чтобы показать его полностью, поэтому разделить его пока нельзя.</div>}
+      {binaryCount > 0 && <div className="banner"><Icon name="warning" />Бинарные файлы останутся во втором коммите.</div>}
+      {everything && <div className="banner warn"><Icon name="warning" />Оставь что-нибудь и для второго коммита.</div>}
+      <div className="field-row">
+        <label className="field">
+          <span>Сообщение первого коммита</span>
+          <input autoFocus value={firstMessage} placeholder="Что входит в первую часть" onChange={(event) => setFirstMessage(event.target.value)} />
+        </label>
+        <label className="field">
+          <span>Сообщение второго коммита</span>
+          <input value={secondMessage} onChange={(event) => setSecondMessage(event.target.value)} />
+        </label>
+      </div>
+      <DiffView
+        diff={diff}
+        actions={{
+          hunk: (file, index) => box(`${file.path}\0${index}`),
+          file: (file) => (!file.binary && !file.hunks.length ? box(`${file.path}\0file`) : null)
+        }}
+      />
     </Modal>
   )
 }

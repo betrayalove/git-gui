@@ -2,6 +2,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
+import { commitDiff } from '../src/core/read'
+import { buildPatch } from '../src/shared/patch'
+import type { FileDiff, RewritePlan } from '../src/shared/types'
 import { applyRewrite, previewRewrite, purgeBackups, readJournal, redoEntry, undoEntry } from '../src/core/rewrite'
 import { addOrigin, commitFile, createRepo, head, log, mergeNoFf, resetClock, write } from './helpers'
 
@@ -334,6 +337,199 @@ describe('sequence edits', () => {
       sequence: { base: keep, tip: toDrop, todo: [{ sha: toDrop, action: 'drop' }] }
     })
     expect(preview.conflicts[0]?.reason).toBe('merge-commit')
+  })
+})
+
+describe('resolving conflicts during a rewrite', () => {
+  async function swapped(): Promise<{ dir: string; plan: RewritePlan; b: string; c: string }> {
+    const dir = await createRepo()
+    const a = await commitFile(dir, 'a.txt', '1\n', 'one')
+    const b = await commitFile(dir, 'a.txt', '2\n', 'two')
+    const c = await commitFile(dir, 'a.txt', '3\n', 'three')
+    return { dir, b, c, plan: { sequence: { base: a, tip: c, todo: [c, b].map((sha) => ({ sha, action: 'pick' as const })) } } }
+  }
+
+  it('describes each side of the conflict', async () => {
+    const { dir, plan, c } = await swapped()
+    const { conflicts } = await previewRewrite(dir, plan)
+    expect(conflicts[0].sha).toBe(c)
+    const file = conflicts[0].details![0]
+    expect(file.path).toBe('a.txt')
+    expect(await git(dir, ['cat-file', 'blob', file.ours!])).toBe('1\n')
+    expect(await git(dir, ['cat-file', 'blob', file.theirs!])).toBe('3\n')
+    expect(await git(dir, ['cat-file', 'blob', file.merged!])).toContain('<<<<<<<')
+  })
+
+  it('walks through conflicts one by one until the plan applies', async () => {
+    const { dir, plan, b, c } = await swapped()
+    const first = await previewRewrite(dir, { ...plan, resolutions: { [c]: { 'a.txt': { content: 'resolved three\n' } } } })
+    expect(first.conflicts[0].sha).toBe(b)
+    const full = { ...plan, resolutions: { [c]: { 'a.txt': { content: 'resolved three\n' } }, [b]: { 'a.txt': { content: 'final\n' } } } }
+    expect((await previewRewrite(dir, full)).conflicts).toEqual([])
+    await applyRewrite(dir, full)
+    expect(await log(dir)).toEqual(['two', 'three', 'one'])
+    expect(await git(dir, ['show', 'HEAD~1:a.txt'])).toBe('resolved three\n')
+    expect(await git(dir, ['show', 'HEAD:a.txt'])).toBe('final\n')
+    expect(readFileSync(join(dir, 'a.txt'), 'utf8')).toBe('final\n')
+    await git(dir, ['fsck', '--strict', '--full', '--no-dangling'])
+  })
+
+  it('accepts a chosen side, and deletion', async () => {
+    const { dir, plan, b, c } = await swapped()
+    const { conflicts } = await previewRewrite(dir, plan)
+    const theirs = conflicts[0].details![0].theirs!
+    await applyRewrite(dir, { ...plan, resolutions: { [c]: { 'a.txt': { blob: theirs } }, [b]: { 'a.txt': { deleted: true } } } })
+    expect(await git(dir, ['show', 'HEAD~1:a.txt'])).toBe('3\n')
+    expect(existsSync(join(dir, 'a.txt'))).toBe(false)
+  })
+
+  it('does not touch the real index or working tree while resolving', async () => {
+    const { dir, plan, b, c } = await swapped()
+    write(dir, 'untracked.txt', 'keep\n')
+    write(dir, 'staged.txt', 'staged\n')
+    await git(dir, ['add', 'staged.txt'])
+    const before = await git(dir, ['status', '--porcelain'])
+    await previewRewrite(dir, { ...plan, resolutions: { [c]: { 'a.txt': { content: 'x\n' } }, [b]: { 'a.txt': { content: 'y\n' } } } })
+    expect(await git(dir, ['status', '--porcelain'])).toBe(before)
+    expect(readFileSync(join(dir, 'a.txt'), 'utf8')).toBe('3\n')
+  })
+
+  it('still conflicts when an answer covers only some files', async () => {
+    const dir = await createRepo()
+    const a = await commitFile(dir, 'x.txt', '1\n', 'one')
+    await commitFile(dir, 'y.txt', '1\n', 'one y')
+    write(dir, 'x.txt', '2\n')
+    write(dir, 'y.txt', '2\n')
+    await git(dir, ['add', '--all'])
+    await git(dir, ['commit', '-m', 'two'])
+    const b = await head(dir)
+    write(dir, 'x.txt', '3\n')
+    write(dir, 'y.txt', '3\n')
+    await git(dir, ['add', '--all'])
+    await git(dir, ['commit', '-m', 'three'])
+    const c = await head(dir)
+    const mid = await head(dir, 'HEAD~2')
+    expect(a).not.toBe(mid)
+    const preview = await previewRewrite(dir, {
+      sequence: { base: mid, tip: c, todo: [c, b].map((sha) => ({ sha, action: 'pick' as const })) },
+      resolutions: { [c]: { 'x.txt': { content: 'z\n' } } }
+    })
+    expect(preview.conflicts[0].files.sort()).toEqual(['x.txt', 'y.txt'])
+  })
+
+  it('resolves a conflict in a squash', async () => {
+    const dir = await createRepo()
+    const a = await commitFile(dir, 'a.txt', '1\n', 'one')
+    const b = await commitFile(dir, 'a.txt', '2\n', 'two')
+    const c = await commitFile(dir, 'a.txt', '3\n', 'three')
+    const d = await commitFile(dir, 'a.txt', '4\n', 'four')
+    const sequence = {
+      base: a,
+      tip: d,
+      todo: [
+        { sha: b, action: 'pick' as const },
+        { sha: d, action: 'fixup' as const },
+        { sha: c, action: 'drop' as const }
+      ]
+    }
+    const preview = await previewRewrite(dir, { sequence })
+    expect(preview.conflicts[0]?.sha).toBe(d)
+    await applyRewrite(dir, { sequence, resolutions: { [d]: { 'a.txt': { content: 'merged\n' } } } })
+    expect(await log(dir)).toEqual(['two', 'one'])
+    expect(await git(dir, ['show', 'HEAD:a.txt'])).toBe('merged\n')
+  })
+})
+
+describe('splitting commits', () => {
+  const lines = (values: string[]): string => `${values.join('\n')}\n`
+  const original = Array.from({ length: 30 }, (_, index) => `line ${index}`)
+
+  async function bigCommit(): Promise<{ dir: string; base: string; big: string; files: FileDiff[] }> {
+    const dir = await createRepo()
+    const base = await commitFile(dir, 'a.txt', lines(original), 'base')
+    const changed = [...original]
+    changed[2] = 'first change'
+    changed[25] = 'second change'
+    write(dir, 'a.txt', lines(changed))
+    write(dir, 'new.txt', 'new file\n')
+    const big = await commitFile(dir, 'other.txt', 'other\n', 'big commit')
+    const { files } = await commitDiff(dir, big)
+    return { dir, base, big, files }
+  }
+
+  it('splits by hunk and by file, keeping the final tree and metadata', async () => {
+    const { dir, base, big, files } = await bigCommit()
+    const treeBefore = await gitLine(dir, ['rev-parse', 'HEAD^{tree}'])
+    const a = files.find((file) => file.path === 'a.txt')!
+    const added = files.find((file) => file.path === 'new.txt')!
+    const patch = buildPatch([{ file: a, hunks: [0] }, { file: added, hunks: [0] }])
+    await applyRewrite(dir, {
+      edits: { [big]: { message: 'the rest' } },
+      sequence: { base, tip: big, todo: [{ sha: big, action: 'pick', split: { patch, message: 'the first part' } }] }
+    })
+    expect(await log(dir)).toEqual(['the rest', 'the first part', 'base'])
+    expect(await gitLine(dir, ['rev-parse', 'HEAD^{tree}'])).toBe(treeBefore)
+    const first = await git(dir, ['show', '--format=', 'HEAD~1'])
+    expect(first).toContain('+first change')
+    expect(first).not.toContain('+second change')
+    expect(first).toContain('new.txt')
+    expect(first).not.toContain('other.txt')
+    const second = await git(dir, ['show', '--format=', 'HEAD'])
+    expect(second).toContain('+second change')
+    expect(second).toContain('other.txt')
+    expect(await gitLine(dir, ['log', '-1', '--format=%an|%aI', 'HEAD~1'])).toBe(await gitLine(dir, ['log', '-1', '--format=%an|%aI', big]))
+    await git(dir, ['fsck', '--strict', '--full', '--no-dangling'])
+  })
+
+  it('keeps later commits on top, and is undoable', async () => {
+    const { dir, base, big, files } = await bigCommit()
+    const later = await commitFile(dir, 'later.txt', 'l\n', 'later')
+    const patch = buildPatch([{ file: files.find((file) => file.path === 'a.txt')!, hunks: [0] }])
+    const { entry } = await applyRewrite(dir, {
+      sequence: {
+        base,
+        tip: later,
+        todo: [{ sha: big, action: 'pick', split: { patch, message: 'first' } }, { sha: later, action: 'pick' }]
+      }
+    })
+    expect(await log(dir)).toEqual(['later', 'big commit', 'first', 'base'])
+    await undoEntry(dir, entry.id)
+    expect(await head(dir)).toBe(later)
+  })
+
+  it('splits the root commit', async () => {
+    const dir = await createRepo()
+    write(dir, 'a.txt', 'a\n')
+    const root = await commitFile(dir, 'b.txt', 'b\n', 'everything')
+    const { files } = await commitDiff(dir, root)
+    await applyRewrite(dir, {
+      sequence: {
+        base: null,
+        tip: root,
+        todo: [{ sha: root, action: 'pick', split: { patch: buildPatch([{ file: files.find((file) => file.path === 'a.txt')!, hunks: [0] }]), message: 'just a' } }]
+      }
+    })
+    expect(await log(dir)).toEqual(['everything', 'just a'])
+    expect(await git(dir, ['show', 'HEAD~1:a.txt'])).toBe('a\n')
+    await expect(git(dir, ['show', 'HEAD~1:b.txt'])).rejects.toThrow()
+  })
+
+  it('reports a split that no longer applies after a reorder', async () => {
+    const { dir, base, big, files } = await bigCommit()
+    const patch = buildPatch([{ file: files.find((file) => file.path === 'a.txt')!, hunks: [0] }])
+    const garbled = patch.replace('line 0', 'something else entirely').replace('line 1', 'not there').replace('line 3', 'nope').replace('line 4', 'nor this')
+    const preview = await previewRewrite(dir, {
+      sequence: { base, tip: big, todo: [{ sha: big, action: 'pick', split: { patch: garbled, message: 'first' } }] }
+    })
+    expect(preview.conflicts[0]?.reason).toBe('split')
+    expect(await head(dir)).toBe(big)
+  })
+
+  it('rejects splitting a commit that is also dropped', async () => {
+    const { dir, base, big } = await bigCommit()
+    await expect(previewRewrite(dir, {
+      sequence: { base, tip: big, todo: [{ sha: big, action: 'drop', split: { patch: 'x', message: 'y' } }] }
+    })).rejects.toThrow('Разделённый')
   })
 })
 

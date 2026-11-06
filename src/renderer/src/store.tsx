@@ -113,8 +113,9 @@ export function RepoProvider({ repo, onClose, children }: { repo: string; onClos
       toast('error', (error as Error).message)
       return undefined
     } finally {
-      setBusy(null)
+      // The spinner stays until the list is fresh, so nothing can be clicked on stale rows.
       await reload().catch((error: Error) => toast('error', error.message))
+      setBusy(null)
     }
   }, [reload, toast])
 

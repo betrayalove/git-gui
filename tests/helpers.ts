@@ -40,6 +40,7 @@ export async function createRepo(): Promise<string> {
   await git(dir, ['config', 'user.name', 'Test'])
   await git(dir, ['config', 'user.email', 'test@example.com'])
   await git(dir, ['config', 'commit.gpgsign', 'false'])
+  await git(dir, ['config', 'core.autocrlf', 'false'])
   return dir
 }
 

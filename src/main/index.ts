@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, session, shell, Tray } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron'
 import { checkGitVersion, configureGit } from '../core/git'
 import { cloneRepository, initRepository } from '../core/ops'
 import { isRepository, repoRoot } from '../core/read'
@@ -223,20 +223,14 @@ function registerIpc(): void {
   })
 }
 
+// A second instance would run its own publish timer, so only one may live.
+if (!app.requestSingleInstanceLock()) app.exit(0)
+app.on('second-instance', showWindow)
+
 void app.whenReady().then(async () => {
   await adoptLoginShellEnv()
   await loadState()
   registerIpc()
-  if (!process.env.ELECTRON_RENDERER_URL) {
-    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': ["default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'"]
-        }
-      })
-    })
-  }
   try {
     await checkGitVersion()
   } catch (error) {

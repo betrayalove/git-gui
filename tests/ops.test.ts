@@ -3,11 +3,12 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
 import {
-  commit, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
-  stageFiles, stashApply, stashClear, stashDrop, stashPush, unstageFiles
+  applyPatch, commit, continueOperation, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
+  readWorktreeConflicts, resolveWorktreeConflict, stageFiles, stashApply, stashClear, stashDrop, stashPush, unstageFiles
 } from '../src/core/ops'
-import { commitDiff, parseDiff, readLog, readRefs, readRemotes, readStashes, readStatus, stashDiff, worktreeDiff } from '../src/core/read'
+import { commitDiff, parseDiff, readBlob, readLog, readRefs, readRemotes, readStashes, readStatus, stashDiff, worktreeDiff } from '../src/core/read'
 import { applyRewrite, rewrittenTagsOnRemote } from '../src/core/rewrite'
+import { buildFilePatch } from '../src/shared/patch'
 import { addOrigin, commitFile, createRepo, head, log, tempDir, write } from './helpers'
 
 describe('reading', () => {
@@ -301,5 +302,118 @@ describe('branch rename', () => {
     expect((await readRefs(dir)).map((ref) => ref.name)).not.toContain('origin/remote-only')
     await deleteRemoteBranch(dir, 'origin', 'renamed')
     await expect(git(bare, ['rev-parse', '--verify', 'renamed'])).rejects.toThrow()
+  })
+})
+
+describe('hunks', () => {
+  const lines = (values: string[]): string => `${values.join('\n')}\n`
+  const original = Array.from({ length: 30 }, (_, index) => `line ${index}`)
+
+  async function twoHunks(): Promise<string> {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', lines(original), 'base')
+    const changed = [...original]
+    changed[2] = 'first change'
+    changed[25] = 'second change'
+    write(dir, 'a.txt', lines(changed))
+    return dir
+  }
+
+  it('stages only the chosen hunk', async () => {
+    const dir = await twoHunks()
+    const [file] = (await worktreeDiff(dir, 'a.txt', false, false)).files
+    expect(file.hunks.length).toBe(2)
+    await applyPatch(dir, buildFilePatch(file, [1]), { cached: true })
+    const staged = await git(dir, ['diff', '--cached'])
+    expect(staged).toContain('+second change')
+    expect(staged).not.toContain('+first change')
+    expect(await git(dir, ['diff'])).toContain('+first change')
+  })
+
+  it('unstages only the chosen hunk', async () => {
+    const dir = await twoHunks()
+    await stageFiles(dir, ['a.txt'])
+    const [file] = (await worktreeDiff(dir, 'a.txt', true, false)).files
+    await applyPatch(dir, buildFilePatch(file, [0]), { cached: true, reverse: true })
+    expect(await git(dir, ['diff', '--cached'])).not.toContain('+first change')
+    expect(await git(dir, ['diff', '--cached'])).toContain('+second change')
+  })
+
+  it('discards only the chosen hunk from the working tree', async () => {
+    const dir = await twoHunks()
+    const [file] = (await worktreeDiff(dir, 'a.txt', false, false)).files
+    await applyPatch(dir, buildFilePatch(file, [0]), { reverse: true })
+    const diff = await git(dir, ['diff'])
+    expect(diff).not.toContain('first change')
+    expect(diff).toContain('+second change')
+  })
+
+  it('handles a file with no trailing newline', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', 'one\ntwo', 'base')
+    write(dir, 'a.txt', 'one\nthree')
+    const [file] = (await worktreeDiff(dir, 'a.txt', false, false)).files
+    await applyPatch(dir, buildFilePatch(file, [0]), { cached: true })
+    expect(await git(dir, ['show', ':a.txt'])).toBe('one\nthree')
+  })
+
+  it('handles non-ASCII paths and content', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'папка/файл с пробелом.txt', 'старое\n', 'base')
+    write(dir, 'папка/файл с пробелом.txt', 'новое\n')
+    const [file] = (await worktreeDiff(dir, 'папка/файл с пробелом.txt', false, false)).files
+    expect(file.path).toBe('папка/файл с пробелом.txt')
+    await applyPatch(dir, buildFilePatch(file, [0]), { cached: true })
+    expect(await git(dir, ['show', ':папка/файл с пробелом.txt'])).toBe('новое\n')
+  })
+})
+
+describe('conflicts in the working tree', () => {
+  async function conflicted(): Promise<string> {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', 'base\n', 'base')
+    await git(dir, ['switch', '-c', 'other'])
+    await commitFile(dir, 'a.txt', 'theirs\n', 'other')
+    await git(dir, ['switch', 'main'])
+    await commitFile(dir, 'a.txt', 'ours\n', 'main')
+    await git(dir, ['merge', 'other'], { okCodes: [1] })
+    return dir
+  }
+
+  it('lists the sides of a conflict', async () => {
+    const dir = await conflicted()
+    const [conflict] = await readWorktreeConflicts(dir)
+    expect(conflict.path).toBe('a.txt')
+    expect((await readBlob(dir, conflict.ours!)).text).toBe('ours\n')
+    expect((await readBlob(dir, conflict.theirs!)).text).toBe('theirs\n')
+    expect(conflict.mergedContent?.text).toContain('<<<<<<<')
+  })
+
+  it('resolves with custom content and finishes the merge', async () => {
+    const dir = await conflicted()
+    await resolveWorktreeConflict(dir, 'a.txt', { content: 'combined\n' })
+    expect(await readWorktreeConflicts(dir)).toEqual([])
+    await continueOperation(dir, 'merge')
+    expect(await git(dir, ['show', 'HEAD:a.txt'])).toBe('combined\n')
+    expect((await readStatus(dir)).operation).toBeUndefined()
+    expect(await gitLine(dir, ['log', '-1', '--format=%p']).then((parents) => parents.split(' ').length)).toBe(2)
+  })
+
+  it('resolves by choosing a side or deleting the file', async () => {
+    const dir = await conflicted()
+    const [conflict] = await readWorktreeConflicts(dir)
+    await resolveWorktreeConflict(dir, 'a.txt', { blob: conflict.theirs! })
+    expect(await git(dir, ['show', ':a.txt'])).toBe('theirs\n')
+    const other = await conflicted()
+    await resolveWorktreeConflict(other, 'a.txt', { deleted: true })
+    expect(existsSync(join(other, 'a.txt'))).toBe(false)
+    expect(await readWorktreeConflicts(other)).toEqual([])
+  })
+
+  it('refuses paths that are not in conflict', async () => {
+    const dir = await conflicted()
+    await expect(resolveWorktreeConflict(dir, '../outside.txt', { content: 'x' })).rejects.toThrow()
+    await expect(resolveWorktreeConflict(dir, 'other.txt', { content: 'x' })).rejects.toThrow('не в конфликте')
+    expect(existsSync(join(dir, 'other.txt'))).toBe(false)
   })
 })

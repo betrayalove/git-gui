@@ -1,4 +1,4 @@
-import type { Commit, CommitEdit, RewritePlan, TodoAction, TodoItem } from './types'
+import type { Commit, CommitEdit, CommitSplit, RewritePlan, TodoAction, TodoItem } from './types'
 
 export interface DraftSequence {
   branch: string
@@ -15,7 +15,7 @@ export interface Draft {
 
 export const EMPTY_DRAFT: Draft = { edits: {}, sequence: null }
 
-export type RowDraftState = 'edited' | 'moved' | 'dropped' | 'squashed' | 'fixup'
+export type RowDraftState = 'edited' | 'moved' | 'dropped' | 'squashed' | 'fixup' | 'split'
 
 export interface DisplayCommit extends Commit {
   draftStates: RowDraftState[]
@@ -58,7 +58,7 @@ function originalOrder(commits: Commit[], sequence: DraftSequence): string[] {
 export function isSequenceChanged(commits: Commit[], sequence: DraftSequence | null): boolean {
   if (!sequence) return false
   const original = originalOrder(commits, sequence)
-  return sequence.todo.some((item, index) => item.action !== 'pick' || item.sha !== original[index])
+  return sequence.todo.some((item, index) => item.action !== 'pick' || item.sha !== original[index] || item.split)
 }
 
 /** Moves `sha` right above or below `target` in the visual, newest-first list. */
@@ -87,8 +87,26 @@ export function squashInSequence(sequence: DraftSequence, sha: string, target: s
 export function setAction(sequence: DraftSequence, sha: string, action: TodoAction): DraftSequence {
   return normalizeSequence({
     ...sequence,
-    todo: sequence.todo.map((item) => (item.sha === sha ? { ...item, action } : item))
+    todo: sequence.todo.map((item) => {
+      if (item.sha !== sha) return item
+      const next: TodoItem = { ...item, action }
+      if (action !== 'pick') delete next.split
+      return next
+    })
   })
+}
+
+export function setSplit(sequence: DraftSequence, sha: string, split: CommitSplit | undefined): DraftSequence {
+  return {
+    ...sequence,
+    todo: sequence.todo.map((item) => {
+      if (item.sha !== sha) return item
+      const next: TodoItem = { ...item, action: 'pick' }
+      if (split) next.split = split
+      else delete next.split
+      return next
+    })
+  }
 }
 
 /** A melded commit needs a kept commit below it. Otherwise it becomes an ordinary one. */
@@ -115,7 +133,7 @@ export function draftChangeCount(commits: Commit[], draft: Draft): number {
   const edited = Object.values(draft.edits).filter((edit) => !isEditEmpty(edit)).length
   if (!draft.sequence || !isSequenceChanged(commits, draft.sequence)) return edited
   const original = originalOrder(commits, draft.sequence)
-  const structural = draft.sequence.todo.filter((item, index) => item.action !== 'pick' || item.sha !== original[index]).length
+  const structural = draft.sequence.todo.filter((item, index) => item.action !== 'pick' || item.sha !== original[index] || item.split).length
   return edited + structural
 }
 
@@ -171,6 +189,7 @@ export function applyDraftToCommits(commits: Commit[], draft: Draft): DisplayCom
     else if (action === 'fixup') next.draftStates.push('fixup')
     const todoIndex = sequence.todo.findIndex((item) => item.sha === sha)
     if (originalIndex.get(sha) !== todoIndex) next.draftStates.push('moved')
+    if (sequence.todo[todoIndex].split) next.draftStates.push('split')
     result.push(next)
     slot++
   }
@@ -194,7 +213,7 @@ export function buildPlan(commits: Commit[], draft: Draft): RewritePlan {
     while (start < sequence.todo.length - 1) {
       const item = sequence.todo[start]
       const next = sequence.todo[start + 1]
-      if (item.action !== 'pick' || item.sha !== original[start] || next.action === 'squash' || next.action === 'fixup') break
+      if (item.action !== 'pick' || item.sha !== original[start] || item.split || next.action === 'squash' || next.action === 'fixup') break
       base = item.sha
       start++
     }

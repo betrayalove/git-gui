@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import {
-  applyDraftToCommits, isSequenceChanged, linearChain, moveInSequence, setAction, squashInSequence, startSequence,
+  applyDraftToCommits, isSequenceChanged, linearChain, moveInSequence, setAction, setSplit, squashInSequence, startSequence,
   type DisplayCommit, type DraftSequence, type RowDraftState
 } from '../../../shared/draft'
 import { layoutGraph } from '../../../shared/graph'
 import type { RefInfo, TodoAction, TodoItem } from '../../../shared/types'
 import { appApi } from '../api'
-import { ConfirmDialog, PromptDialog, ScheduleDialog, useDialogs } from '../components/dialogs'
+import { ConfirmDialog, PromptDialog, ScheduleDialog, SplitCommitDialog, useDialogs } from '../components/dialogs'
 import { GraphCell, graphWidth, ROW_HEIGHT } from '../components/Graph'
 import { Avatar, ContextMenu, EmptyState, Icon, type MenuItem } from '../components/ui'
 import { formatFull, formatRelative, shortSha } from '../format'
@@ -19,7 +19,8 @@ const STATE_LABEL: Record<RowDraftState, string> = {
   moved: 'перемещён',
   dropped: 'удалён',
   squashed: 'объединён',
-  fixup: 'объединён'
+  fixup: 'объединён',
+  split: 'разделён'
 }
 
 function RefChip({ info }: { info: RefInfo }): ReactNode {
@@ -197,11 +198,32 @@ export function HistoryView({ search }: { search: string }): ReactNode {
         label: 'Отменить объединение',
         run: () => changeSequence(commit.sha, (sequence) => setAction(sequence, commit.sha, 'pick'))
       }] : []),
+      commit.draftStates.includes('split') ? {
+        label: 'Отменить разделение',
+        icon: 'split',
+        run: () => changeSequence(commit.sha, (sequence) => setSplit(sequence, commit.sha, undefined))
+      } : {
+        label: 'Разделить коммит…',
+        icon: 'split',
+        disabled: commit.parents.length > 1 || !editableRun.length,
+        run: () => show(<SplitCommitDialog
+          commit={commit}
+          onConfirm={(split, secondMessage) => {
+            changeSequence(commit.sha, (sequence) => setSplit(sequence, commit.sha, split))
+            if (secondMessage !== commit.message) {
+              setDraft((current) => ({
+                ...current,
+                edits: { ...current.edits, [commit.sha]: { ...current.edits[commit.sha], message: secondMessage } }
+              }))
+            }
+          }}
+        />)
+      },
       { separator: true },
       {
         label: headIndex >= 0 ? `Снять ${headChain.length - headIndex} и опубликовать позже…` : 'Снять и опубликовать позже…',
         icon: 'schedule',
-        disabled: headIndex < 0 || headIndex === 0 && headChain.length === 1,
+        disabled: headIndex < 0 || commit.parents.length !== 1,
         run: () => show(<ScheduleDialog branch={head!} count={headChain.length - headIndex} />)
       },
       { separator: true },

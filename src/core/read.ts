@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type {
+  BlobContent,
   Commit,
   DiffHunk,
   DiffLine,
@@ -282,13 +283,14 @@ export function parseDiff(raw: string): DiffResult {
       const match = /^diff --git (?:"?a\/.*"? )?("?b\/.*"?)$/.exec(line)
       file = {
         path: match ? stripPrefix(match[1]) : line.slice(11),
-        status: 'modified', binary: false, additions: 0, deletions: 0, hunks: []
+        status: 'modified', binary: false, additions: 0, deletions: 0, header: [line], hunks: []
       }
       files.push(file)
       hunk = null
     } else if (!file) {
       continue
     } else if (!hunk || !/^[ +\-\\]/.test(line)) {
+      if (!line.startsWith('@@') && !hunk && line) file.header.push(line)
       if (line.startsWith('new file')) file.status = 'added'
       else if (line.startsWith('deleted file')) file.status = 'deleted'
       else if (line.startsWith('rename from ')) { file.status = 'renamed'; file.oldPath = unquote(line.slice(12)) }
@@ -333,6 +335,17 @@ async function diffOutput(cwd: string, args: string[], okCodes: number[] = []): 
   const { stdout } = await runGit(cwd, args, { okCodes })
   const raw = stdout.length > DIFF_LIMIT ? stdout.subarray(0, DIFF_LIMIT).toString('utf8') : stdout.toString('utf8')
   return parseDiff(raw)
+}
+
+const BLOB_LIMIT = 2 * 1024 * 1024
+
+export async function readBlob(cwd: string, oid: string): Promise<BlobContent> {
+  const { stdout } = await runGit(cwd, ['cat-file', 'blob', oid])
+  return {
+    text: stdout.length > BLOB_LIMIT || stdout.includes(0) ? '' : stdout.toString('utf8'),
+    binary: stdout.includes(0),
+    tooLarge: stdout.length > BLOB_LIMIT
+  }
 }
 
 export function commitDiff(cwd: string, sha: string): Promise<DiffResult> {
