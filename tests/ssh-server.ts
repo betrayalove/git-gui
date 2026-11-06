@@ -4,6 +4,9 @@ import { createServer } from 'node:net'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 
+/** Why the last start failed, so a required server that is missing explains itself. */
+export let sshdFailure = ''
+
 export interface SshServer {
   port: number
   user: string
@@ -51,7 +54,10 @@ function serverPath(path: string): string {
  */
 export async function startSshServer(dir: string): Promise<SshServer | null> {
   const sshd = findSshd()
-  if (!sshd) return null
+  if (!sshd) {
+    sshdFailure = `no sshd found, looked for ${process.platform === 'win32' ? sshTool('sshd') : 'the usual paths'}`
+    return null
+  }
   const hostKey = join(dir, 'host_key')
   execFileSync(sshTool('ssh-keygen'), ['-q', '-t', 'ed25519', '-f', hostKey, '-N', ''])
   const authorized = join(dir, 'authorized_keys')
@@ -110,7 +116,7 @@ export async function startSshServer(dir: string): Promise<SshServer | null> {
   })
   if (!ready) {
     child.kill()
-    console.warn(`sshd did not start: ${failure.trim()}`)
+    sshdFailure = `${sshd} exited with ${child.exitCode}: ${failure.trim()}`
     return null
   }
   const user = userInfo().username

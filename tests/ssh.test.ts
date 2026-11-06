@@ -11,7 +11,7 @@ import { checkKey, checkRemote, clearRepoKey, createKey, derivePublicKey, listKe
 import { classifyAccessError, type AccessPrompt, type PromptReply, type SshTarget } from '../src/shared/access'
 import { startGitHttpServer } from './git-http-server'
 import { commitFile, createRepo, tempDir } from './helpers'
-import { sshTool, startSshServer, writeClientConfig, type SshServer } from './ssh-server'
+import { sshdFailure, sshTool, startSshServer, writeClientConfig, type SshServer } from './ssh-server'
 
 const asked: AccessPrompt[] = []
 let answer: (prompt: AccessPrompt) => PromptReply | null = () => null
@@ -104,7 +104,10 @@ const serverDir = join(root, 'server')
 mkdirSync(home)
 mkdirSync(serverDir)
 const server: SshServer | null = await startSshServer(serverDir)
-if (process.env.CHRONICLE_REQUIRE_SSHD && !server) throw new Error('sshd is required here but did not start')
+
+it.runIf(process.env.CHRONICLE_REQUIRE_SSHD)('has a real ssh server to test against', () => {
+  expect(sshdFailure).toBe('')
+})
 
 describe.skipIf(!server)('keys against a real ssh server', () => {
   const target = (): SshTarget => ({ host: '127.0.0.1', user: server!.user, port: server!.port })
@@ -399,9 +402,5 @@ describe.skipIf(!server)('keys against a real ssh server', () => {
   it('reads a refusal the same way the interface will', async () => {
     const message = (await checkRemote(null, 'ssh://nobody-here@127.0.0.1:1/x.git')).message
     expect(classifyAccessError(message)).toBe('offline')
-  })
-
-  it('has an sshd to test against on this system', () => {
-    expect(server).not.toBeNull()
   })
 })

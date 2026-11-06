@@ -5,14 +5,17 @@ import { join } from 'node:path'
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
-import { sshTool, startSshServer, writeClientConfig, type SshServer } from '../tests/ssh-server'
+import { sshdFailure, sshTool, startSshServer, writeClientConfig, type SshServer } from '../tests/ssh-server'
 
 const shots = process.env.CHRONICLE_SHOTS
 const root = mkdtempSync(join(tmpdir(), 'chronicle-access-'))
 const serverDir = join(root, 'server')
 mkdirSync(serverDir)
 const server: SshServer | null = await startSshServer(serverDir)
-if (process.env.CHRONICLE_REQUIRE_SSHD && !server) throw new Error('sshd is required here but did not start')
+
+it.runIf(process.env.CHRONICLE_REQUIRE_SSHD)('has a real ssh server to test against', () => {
+  expect(sshdFailure).toBe('')
+})
 const bare = join(serverDir, 'project.git')
 
 interface Launched {
