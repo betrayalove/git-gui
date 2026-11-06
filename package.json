@@ -13,7 +13,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "electron-vite build && vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "electron-vite build && vitest run --config vitest.e2e.config.ts",
+    "dist": "electron-vite build && electron-builder --publish never",
+    "dist:mac": "electron-vite build && electron-builder --mac --publish never",
+    "dist:win": "electron-vite build && electron-builder --win --publish never"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -21,20 +24,51 @@
       "esbuild"
     ]
   },
-  "dependencies": {
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1"
-  },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
     "playwright": "^1.65.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"
+  },
+  "author": "betrayalove",
+  "build": {
+    "appId": "com.betrayalove.chronicle",
+    "productName": "Chronicle",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "artifactName": "Chronicle-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

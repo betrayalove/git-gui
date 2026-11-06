@@ -4,7 +4,7 @@
 
 ## Запуск
 
-Нужны Node.js, pnpm и git 2.45 или новее.
+Нужны Node.js, pnpm и git 2.45 или новее. Готовому приложению нужен только git.
 
 ```bash
 pnpm install
@@ -13,6 +13,18 @@ pnpm install
 ```bash
 pnpm dev
 ```
+
+## Сборка установщика
+
+```bash
+pnpm dist:mac
+```
+
+```bash
+pnpm dist:win
+```
+
+Установщики появляются в `dist/`. Установщик для Windows нужно собирать на Windows, в GitHub Actions для этого есть процесс Installers. Сборки пока без подписи разработчика: macOS при первом запуске потребует подтвердить открытие в настройках безопасности, Windows покажет предупреждение SmartScreen.
 
 ## Проверка
 
