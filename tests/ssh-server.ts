@@ -1,8 +1,9 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
+import { Server, utils, type Connection, type ParsedKey } from 'ssh2'
 import { gitUsrBin } from '../src/core/ssh'
 
 /** Why the last start failed, so a required server that is missing explains itself. */
@@ -26,8 +27,7 @@ export function sshTool(name: string): string {
 }
 
 function findSshd(): string | null {
-  const candidates = process.platform === 'win32' ? [sshTool('sshd')] : ['/usr/sbin/sshd', '/usr/bin/sshd', '/usr/local/sbin/sshd']
-  return candidates.find((path) => existsSync(path)) ?? null
+  return ['/usr/sbin/sshd', '/usr/bin/sshd', '/usr/local/sbin/sshd'].find((path) => existsSync(path)) ?? null
 }
 
 function freePort(): Promise<number> {
@@ -55,9 +55,11 @@ function serverPath(path: string): string {
  * does; a command runs normally, so git can really push and fetch. Null when no sshd is available.
  */
 export async function startSshServer(dir: string): Promise<SshServer | null> {
+  // Git for Windows comes without sshd, but its ssh client is what has to be tested there.
+  if (process.platform === 'win32' || process.env.CHRONICLE_TEST_NODE_SSH) return startNodeSshServer(dir)
   const sshd = findSshd()
   if (!sshd) {
-    sshdFailure = `no sshd found, looked for ${process.platform === 'win32' ? sshTool('sshd') : 'the usual paths'}`
+    sshdFailure = 'no sshd found in the usual paths'
     return null
   }
   const hostKey = join(dir, 'host_key')
@@ -88,7 +90,7 @@ export async function startSshServer(dir: string): Promise<SshServer | null> {
     'PasswordAuthentication no',
     'KbdInteractiveAuthentication no',
     'UseDNS no',
-    ...(process.platform === 'win32' ? [] : ['UsePAM no']),
+    'UsePAM no',
     'LogLevel ERROR',
     ''
   ].join('\n'))
@@ -128,6 +130,70 @@ export async function startSshServer(dir: string): Promise<SshServer | null> {
     authorize: (publicKey) => appendFileSync(authorized, `${publicKey.trim()}\n`),
     url: (path) => `ssh://${user}@127.0.0.1:${port}/${serverPath(path).replace(/^\/+/, '')}`,
     stop: () => void child.kill()
+  }
+}
+
+/** The same behaviour as the real sshd above, for systems that have none. Clients cannot tell. */
+async function startNodeSshServer(dir: string): Promise<SshServer> {
+  const hostKey = join(dir, 'host_key')
+  execFileSync(sshTool('ssh-keygen'), ['-q', '-t', 'ed25519', '-f', hostKey, '-N', ''])
+  const allowed: ParsedKey[] = []
+  const clients = new Set<Connection>()
+  const server = new Server({ hostKeys: [readFileSync(hostKey)] }, (client) => {
+    clients.add(client)
+    client.on('close', () => clients.delete(client))
+    client.on('error', () => {})
+    client.on('authentication', (context) => {
+      if (context.method !== 'publickey') return context.reject(['publickey'])
+      const key = allowed.find((item) => item.type === context.key.algo && item.getPublicSSH().equals(context.key.data))
+      if (!key) return context.reject(['publickey'])
+      if (context.signature && key.verify(context.blob!, context.signature, context.hashAlgo) !== true) return context.reject(['publickey'])
+      context.accept()
+    })
+    client.on('ready', () => {
+      client.on('session', (acceptSession) => {
+        const session = acceptSession()
+        session.on('shell', (accept) => {
+          const stream = accept()
+          stream.write("Hi tester! You've successfully authenticated, but there is no shell access.\r\n")
+          stream.exit(1)
+          stream.end()
+        })
+        session.on('exec', (accept, reject, info) => {
+          const match = /^git[- ](upload-pack|receive-pack) '?(.+?)'?$/.exec(info.command)
+          if (!match) return reject()
+          const stream = accept()
+          const path = match[2].replace(/^\/([a-zA-Z])\//, '$1:/').replace(/^\/([a-zA-Z]:)/, '$1')
+          const child = spawn('git', [match[1], path], { windowsHide: true })
+          child.stdout.pipe(stream, { end: false })
+          child.stderr.pipe(stream.stderr, { end: false })
+          stream.pipe(child.stdin)
+          child.stdin.on('error', () => {})
+          child.on('close', (code) => {
+            stream.exit(code ?? 1)
+            stream.end()
+          })
+        })
+      })
+    })
+  })
+  const port = await new Promise<number>((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve((server.address() as { port: number }).port))
+  })
+  const user = userInfo().username
+  return {
+    port,
+    user,
+    authorize: (publicKey) => {
+      const parsed = utils.parseKey(publicKey.trim())
+      if (parsed instanceof Error) throw parsed
+      allowed.push(Array.isArray(parsed) ? parsed[0] : parsed)
+    },
+    url: (path) => `ssh://${user}@127.0.0.1:${port}/${serverPath(path).replace(/^\/+/, '')}`,
+    stop: () => {
+      for (const client of clients) client.end()
+      server.close()
+    }
   }
 }
 
