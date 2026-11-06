@@ -4,7 +4,7 @@ import {
   moveInSequence, setAction, setSplit, squashInSequence, startSequence
 } from '../src/shared/draft'
 import { hasConflictMarkers, parseConflictMarkers } from '../src/shared/patch'
-import { layoutGraph } from '../src/shared/graph'
+import { clampRow, layoutGraph } from '../src/shared/graph'
 import type { Commit } from '../src/shared/types'
 import { applyRewrite } from '../src/core/rewrite'
 import { readLog } from '../src/core/read'
@@ -74,6 +74,29 @@ describe('graph layout', () => {
     expect(rows[0].column).toBe(0)
     expect(rows[1].column).toBe(1)
     expect(rows[0].color).not.toBe(rows[1].color)
+  })
+})
+
+describe('graph clamping', () => {
+  const wide = {
+    column: 5, color: 1,
+    through: [{ column: 1, color: 2 }, { column: 7, color: 3 }],
+    into: [{ column: 5, color: 1 }, { column: 2, color: 4 }],
+    out: [{ column: 5, color: 1 }, { column: 9, color: 5 }],
+    width: 10
+  }
+
+  it('keeps narrow rows as they are', () => {
+    expect(clampRow(wide, 10)).toBe(wide)
+  })
+
+  it('keeps the node visible at the edge and hides lanes past it', () => {
+    const row = clampRow(wide, 3)
+    expect(row.column).toBe(2)
+    expect(row.width).toBe(3)
+    expect(row.through.map((lane) => lane.column)).toEqual([1])
+    expect(row.into.map((lane) => lane.column)).toEqual([2])
+    expect(row.out.map((lane) => lane.column)).toEqual([2, 2])
   })
 })
 

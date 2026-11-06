@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
@@ -149,6 +149,71 @@ describe('object writing', () => {
     await applyRewrite(dir, { edits: { [shas[1]]: { message: 'line one\n\nline two' } } })
     expect(await git(dir, ['cat-file', 'commit', 'HEAD~2'])).not.toContain('\r')
     await git(dir, ['fsck', '--strict', '--full', '--no-dangling'])
+  })
+})
+
+describe('old and unusual objects', () => {
+  it('rewrites past a commit that fails format checks, keeping its bytes', async () => {
+    const dir = await createRepo()
+    const first = await commitFile(dir, 'a.txt', '1\n', 'first')
+    const tree = await gitLine(dir, ['rev-parse', 'HEAD^{tree}'])
+    const odd = `tree ${tree}\nparent ${first}\nauthor Old Timer <old@e> 0123456 +0000\ncommitter Old Timer <old@e> 0123456 +0000\n\nzero padded date\n`
+    await expect(git(dir, ['hash-object', '-t', 'commit', '-w', '--stdin'], { input: odd })).rejects.toThrow()
+    const sha = await gitLine(dir, ['hash-object', '-t', 'commit', '-w', '--stdin', '--literally'], { input: odd })
+    await git(dir, ['update-ref', 'refs/heads/main', sha])
+    await applyRewrite(dir, { edits: { [first]: { message: 'renamed' } } })
+    expect(await log(dir)).toEqual(['zero padded date', 'renamed'])
+    expect(await git(dir, ['cat-file', 'commit', 'HEAD'])).toContain('author Old Timer <old@e> 0123456 +0000')
+  })
+
+  it('moves a tag with no tagger line', async () => {
+    const dir = await createRepo()
+    const first = await commitFile(dir, 'a.txt', '1\n', 'first')
+    const second = await commitFile(dir, 'b.txt', '2\n', 'second')
+    const tag = await gitLine(dir, ['hash-object', '-t', 'tag', '-w', '--stdin', '--literally'], {
+      input: `object ${second}\ntype commit\ntag ancient\n\nold release\n`
+    })
+    await git(dir, ['update-ref', 'refs/tags/ancient', tag])
+    await applyRewrite(dir, { edits: { [first]: { message: 'renamed' } } })
+    expect(await head(dir, 'ancient^{commit}')).toBe(await head(dir))
+    expect(await git(dir, ['cat-file', 'tag', 'ancient'])).toContain('old release')
+  })
+
+  it('rebuilds a tag that points at another tag', async () => {
+    const dir = await createRepo()
+    const first = await commitFile(dir, 'a.txt', '1\n', 'first')
+    const second = await commitFile(dir, 'b.txt', '2\n', 'second')
+    await git(dir, ['tag', '-a', 'inner', '-m', 'inner tag', second])
+    await git(dir, ['tag', '-a', 'outer', '-m', 'outer tag', 'inner'])
+    expect(await gitLine(dir, ['cat-file', '-p', 'outer'])).toContain('type tag')
+    await applyRewrite(dir, { edits: { [first]: { message: 'renamed' } } })
+    const newHead = await head(dir)
+    expect(newHead).not.toBe(second)
+    expect(await head(dir, 'outer^{commit}')).toBe(newHead)
+    expect(await head(dir, 'inner^{commit}')).toBe(newHead)
+    expect(await git(dir, ['cat-file', '-p', 'outer'])).toContain('outer tag')
+    expect(await gitLine(dir, ['cat-file', '-t', 'outer^{tag}'])).toBe('tag')
+    await git(dir, ['fsck', '--strict', '--full', '--no-dangling'])
+  })
+
+  it('removes a signature from a tag it moves', async () => {
+    const dir = await createRepo()
+    const first = await commitFile(dir, 'a.txt', '1\n', 'first')
+    const second = await commitFile(dir, 'b.txt', '2\n', 'second')
+    const signed = await gitLine(dir, ['hash-object', '-t', 'tag', '-w', '--stdin'], {
+      input: `object ${second}\ntype commit\ntag v1\ntagger A <a@e> 1 +0000\n\nrelease\n-----BEGIN PGP SIGNATURE-----\nfake\n-----END PGP SIGNATURE-----\n`
+    })
+    await git(dir, ['update-ref', 'refs/tags/v1', signed])
+    const { preview } = await applyRewrite(dir, { edits: { [first]: { message: 'renamed' } } })
+    expect(preview.warnings.join()).toContain('Подпись тега v1')
+    const text = await git(dir, ['cat-file', 'tag', 'v1'])
+    expect(text).toContain('release')
+    expect(text).not.toContain('SIGNATURE')
+  })
+
+  it('still rejects a broken edit instead of writing it', async () => {
+    const { dir, shas } = await linearRepo()
+    await expect(previewRewrite(dir, { edits: { [shas[1]]: { authorDate: 'not a date' } } })).rejects.toThrow('Некорректная дата')
   })
 })
 
@@ -552,6 +617,34 @@ describe('removing paths from history', () => {
     expect(await git(dir, ['show', 'main:dir/keep.txt'])).toBe('keep\n')
     expect(existsSync(join(dir, 'secret.env'))).toBe(false)
     expect(await git(dir, ['status', '--porcelain'])).toBe('')
+  })
+
+  it('keeps file modes, nested paths and names with spaces or non-ASCII bytes', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'папка/файл один.txt', 'keep\n', 'first')
+    write(dir, 'run.sh', '#!/bin/sh\n')
+    chmodSync(join(dir, 'run.sh'), 0o755)
+    write(dir, 'папка/секрет два.txt', 'secret\n')
+    await git(dir, ['add', 'run.sh', 'папка/секрет два.txt'])
+    await git(dir, ['update-index', '--chmod=+x', 'run.sh'])
+    await git(dir, ['commit', '-q', '-m', 'second'])
+    await applyRewrite(dir, { removePaths: ['папка/секрет два.txt'] })
+    const listing = await git(dir, ['-c', 'core.quotePath=false', 'ls-tree', '-r', 'HEAD'])
+    expect(listing).toContain('папка/файл один.txt')
+    expect(listing).not.toContain('секрет')
+    expect(listing).toMatch(/100755 blob \w+\trun\.sh/)
+    await git(dir, ['fsck', '--strict', '--full', '--no-dangling'])
+  })
+
+  it('removes a whole directory, and drops parents left empty', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'a/b/c.txt', '1\n', 'first')
+    await commitFile(dir, 'keep.txt', 'k\n', 'second')
+    await applyRewrite(dir, { removePaths: ['a/b/c.txt'] })
+    expect((await git(dir, ['ls-tree', '--name-only', 'HEAD'])).trim()).toBe('keep.txt')
+    await applyRewrite(dir, { removePaths: ['keep.txt'] })
+    expect((await git(dir, ['ls-tree', 'HEAD'])).trim()).toBe('')
+    await git(dir, ['fsck', '--full', '--no-dangling'])
   })
 
   it('prunes commits that become empty when asked', async () => {

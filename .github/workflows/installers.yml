@@ -25,6 +25,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm ${{ matrix.os == 'windows-latest' && 'dist:win' || 'dist:mac' }}
+      - name: Start the packaged app
+        run: node --experimental-strip-types e2e/packaged-smoke.ts ${{ matrix.os == 'windows-latest' && 'dist/win-unpacked/Chronicle.exe' || 'dist/mac-arm64/Chronicle.app/Contents/MacOS/Chronicle' }}
       - uses: actions/upload-artifact@v4
         with:
           name: chronicle-${{ matrix.os }}

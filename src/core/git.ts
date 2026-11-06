@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 
 export class GitError extends Error {
   constructor(
@@ -65,22 +65,26 @@ export function credentialEnv(credentials: GitCredential[]): Record<string, stri
   return env
 }
 
+export function spawnGit(cwd: string, args: string[], env?: Record<string, string>): ChildProcessWithoutNullStreams {
+  return spawn(gitBinary, args, {
+    cwd,
+    windowsHide: true,
+    env: {
+      ...baseEnv,
+      LC_ALL: 'C',
+      LANGUAGE: 'C',
+      GIT_TERMINAL_PROMPT: '0',
+      GIT_EDITOR: 'true',
+      GIT_MERGE_AUTOEDIT: 'no',
+      ...(NETWORK_COMMANDS.has(args[0]) ? networkEnv() : {}),
+      ...env
+    }
+  })
+}
+
 export function runGit(cwd: string, args: string[], options: RunOptions = {}): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(gitBinary, args, {
-      cwd,
-      windowsHide: true,
-      env: {
-        ...baseEnv,
-        LC_ALL: 'C',
-        LANGUAGE: 'C',
-        GIT_TERMINAL_PROMPT: '0',
-        GIT_EDITOR: 'true',
-        GIT_MERGE_AUTOEDIT: 'no',
-        ...(NETWORK_COMMANDS.has(args[0]) ? networkEnv() : {}),
-        ...options.env
-      }
-    })
+    const child = spawnGit(cwd, args, options.env)
     const out: Buffer[] = []
     const err: Buffer[] = []
     child.stdout.on('data', (chunk: Buffer) => out.push(chunk))

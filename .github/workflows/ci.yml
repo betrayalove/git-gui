@@ -25,4 +25,13 @@ jobs:
       - run: pnpm exec electron --version
         env:
           ELECTRON_RUN_AS_NODE: "1"
+      - run: New-Item -ItemType Directory -Force e2e-shots
       - run: pnpm test:e2e
+        env:
+          CHRONICLE_SHOTS: e2e-shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots-windows
+          path: e2e-shots
+          retention-days: 7

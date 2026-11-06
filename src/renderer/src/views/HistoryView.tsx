@@ -3,7 +3,7 @@ import {
   applyDraftToCommits, isSequenceChanged, linearChain, moveInSequence, setAction, setSplit, squashInSequence, startSequence,
   type DisplayCommit, type DraftSequence, type RowDraftState
 } from '../../../shared/draft'
-import { layoutGraph } from '../../../shared/graph'
+import { clampRow, layoutGraph } from '../../../shared/graph'
 import type { RefInfo, TodoAction, TodoItem } from '../../../shared/types'
 import { appApi } from '../api'
 import { ConfirmDialog, PromptDialog, ScheduleDialog, SplitCommitDialog, useDialogs } from '../components/dialogs'
@@ -13,6 +13,7 @@ import { formatFull, formatRelative, shortSha } from '../format'
 import { useRepo } from '../store'
 
 const OVERSCAN = 12
+const MAX_LANES = 16
 
 const STATE_LABEL: Record<RowDraftState, string> = {
   edited: 'изменён',
@@ -67,8 +68,8 @@ export function HistoryView({ search }: { search: string }): ReactNode {
       commit.sha.startsWith(query)
     )
   }, [display, query])
-  const rows = useMemo(() => (query ? [] : layoutGraph(display)), [display, query])
-  const columns = useMemo(() => Math.min(rows.reduce((max, row) => Math.max(max, row.width), 1), 16), [rows])
+  const rows = useMemo(() => (query ? [] : layoutGraph(display).map((row) => clampRow(row, MAX_LANES))), [display, query])
+  const columns = useMemo(() => rows.reduce((max, row) => Math.max(max, row.width), 1), [rows])
   const width = query ? 0 : graphWidth(columns)
 
   const refsBySha = useMemo(() => {

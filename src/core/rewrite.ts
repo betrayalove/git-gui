@@ -13,7 +13,7 @@ import type {
   RewritePreview,
   TodoItem
 } from '../shared/types'
-import { git, GitError, gitLine, isAncestor, runGit } from './git'
+import { git, GitError, gitLine, isAncestor, runGit, spawnGit } from './git'
 import { commonDir, readOperation, readRefs, readStatus } from './read'
 
 
@@ -144,23 +144,38 @@ async function readObjects(cwd: string, shas: string[]): Promise<Map<string, { t
   return objects
 }
 
+/**
+ * Git refuses to create objects that fail its format checks, but old repositories legitimately
+ * contain such objects: tags with no tagger, commits with odd dates. Rewriting one must not stop
+ * the whole history, so a refused write is retried without the format check.
+ */
+async function hashObjects(cwd: string, type: string, args: string[], input: string | Buffer): Promise<string> {
+  const base = ['hash-object', '-t', type, '-w', ...args]
+  try {
+    return await git(cwd, base, { input })
+  } catch (error) {
+    if (!(error instanceof GitError) || !/fsck|malformed|corrupt/i.test(error.stderr)) throw error
+    return git(cwd, [...base, '--literally'], { input })
+  }
+}
+
 async function writeObject(cwd: string, type: 'commit' | 'tag', data: Buffer): Promise<string> {
-  return gitLine(cwd, ['hash-object', '-t', type, '-w', '--stdin'], { input: data })
+  return (await hashObjects(cwd, type, ['--stdin'], data)).trim()
 }
 
 /**
- * Collects commit objects and writes them in one git process, because one process per commit
- * takes half a minute on a long history. The SHA is known up front so that children can refer
- * to it. Git still validates every object, and its answer is compared with the computed SHA.
+ * Collects objects and writes them in one git process, because one process per object takes
+ * minutes on a long history. The SHA is known up front so that children can refer to it.
+ * Git still validates every object, and its answer is compared with the computed SHA.
  */
-class CommitBatch {
+class ObjectBatch {
   private pending: { sha: string; data: Buffer }[] = []
 
-  constructor(private readonly cwd: string, private readonly algorithm: string) {}
+  constructor(private readonly cwd: string, private readonly type: 'commit' | 'tree' | 'tag', private readonly algorithm: string) {}
 
   add(data: Buffer): string {
     const hash = createHash(this.algorithm)
-    hash.update(`commit ${data.length}\0`)
+    hash.update(`${this.type} ${data.length}\0`)
     hash.update(data)
     const sha = hash.digest('hex')
     this.pending.push({ sha, data })
@@ -172,10 +187,10 @@ class CommitBatch {
     const directory = await mkdtemp(join(tmpdir(), 'chronicle-objects-'))
     try {
       const paths = this.pending.map((_, index) => join(directory, String(index)))
-      await Promise.all(this.pending.map((item, index) => writeFile(paths[index], item.data)))
-      const raw = await git(this.cwd, ['hash-object', '-t', 'commit', '-w', '--no-filters', '--stdin-paths'], {
-        input: `${paths.join('\n')}\n`
-      })
+      for (let start = 0; start < paths.length; start += WRITE_CONCURRENCY) {
+        await Promise.all(paths.slice(start, start + WRITE_CONCURRENCY).map((path, offset) => writeFile(path, this.pending[start + offset].data)))
+      }
+      const raw = await hashObjects(this.cwd, this.type, ['--no-filters', '--stdin-paths'], `${paths.join('\n')}\n`)
       const written = raw.split('\n').filter(Boolean)
       this.pending.forEach((item, index) => {
         if (written[index] !== item.sha) throw new Error(`Git записал другой объект: ${written[index]} вместо ${item.sha}`)
@@ -184,6 +199,58 @@ class CommitBatch {
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
+  }
+}
+
+const WRITE_CONCURRENCY = 256
+
+/** One long-lived `git cat-file --batch`, for reading many objects one at a time. */
+class ObjectReader {
+  private readonly child
+  private buffer: Buffer = Buffer.alloc(0)
+  private readonly waiting: { resolve: (data: Buffer) => void; reject: (error: Error) => void }[] = []
+
+  constructor(cwd: string) {
+    this.child = spawnGit(cwd, ['cat-file', '--batch'])
+    this.child.stdin.on('error', () => {})
+    this.child.stderr.resume()
+    this.child.stdout.on('data', (chunk: Buffer) => {
+      this.buffer = this.buffer.length ? Buffer.concat([this.buffer, chunk]) : chunk
+      this.drain()
+    })
+    this.child.on('close', () => {
+      for (const waiter of this.waiting.splice(0)) waiter.reject(new Error('git cat-file завершился раньше времени'))
+    })
+  }
+
+  private drain(): void {
+    while (this.waiting.length) {
+      const newline = this.buffer.indexOf(10)
+      if (newline === -1) return
+      const header = this.buffer.subarray(0, newline).toString('latin1')
+      const [name, type, size] = header.split(' ')
+      if (type === undefined || type === 'missing') {
+        this.buffer = this.buffer.subarray(newline + 1)
+        this.waiting.shift()!.reject(new Error(`Объект не найден: ${name}`))
+        continue
+      }
+      const end = newline + 1 + Number(size)
+      if (this.buffer.length < end + 1) return
+      const data = this.buffer.subarray(newline + 1, end)
+      this.buffer = this.buffer.subarray(end + 1)
+      this.waiting.shift()!.resolve(data)
+    }
+  }
+
+  read(sha: string): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      this.waiting.push({ resolve, reject })
+      this.child.stdin.write(`${sha}\n`)
+    })
+  }
+
+  close(): void {
+    this.child.stdin.end()
   }
 }
 
@@ -279,12 +346,40 @@ function subjectOf(commit: RawCommit): string {
   return Buffer.from(commit.message, 'latin1').toString('utf8').split('\n')[0]
 }
 
+/** Splits a raw tree object into its entries, each still in its original bytes. */
+function parseTree(data: Buffer, hashLength: number): { name: string; isTree: boolean; sha: string; raw: Buffer; rawHead: Buffer }[] {
+  const entries = []
+  let offset = 0
+  while (offset < data.length) {
+    const space = data.indexOf(32, offset)
+    const nul = data.indexOf(0, space)
+    const mode = data.subarray(offset, space).toString('latin1')
+    const end = nul + 1 + hashLength
+    entries.push({
+      name: data.subarray(space + 1, nul).toString('utf8'),
+      isTree: mode === '40000',
+      sha: data.subarray(nul + 1, end).toString('hex'),
+      raw: data.subarray(offset, end),
+      rawHead: data.subarray(offset, nul + 1)
+    })
+    offset = end
+  }
+  return entries
+}
+
 /** Removes paths from trees, sharing work between commits through a cache. */
 class TreePruner {
   private readonly cache = new Map<string, string | null>()
   private readonly paths: string[][]
+  private readonly hashLength: number
 
-  constructor(private readonly cwd: string, paths: string[]) {
+  constructor(
+    private readonly reader: ObjectReader,
+    private readonly batch: ObjectBatch,
+    algorithm: string,
+    paths: string[]
+  ) {
+    this.hashLength = algorithm === 'sha256' ? 32 : 20
     this.paths = paths.map((path) => path.replace(/\\/g, '/').split('/').filter(Boolean))
     if (this.paths.some((parts) => parts.length === 0)) throw new Error('Пустой путь для удаления')
   }
@@ -298,31 +393,25 @@ class TreePruner {
     const key = `${tree}:${paths.map((parts) => parts.join('/')).join('|')}`
     const cached = this.cache.get(key)
     if (cached !== undefined) return cached
-    const raw = await git(this.cwd, ['ls-tree', '-z', tree])
-    const entries = raw.split('\0').filter(Boolean)
-    const kept: string[] = []
+    const entries = parseTree(await this.reader.read(tree), this.hashLength)
+    const kept: Buffer[] = []
     let changed = false
     for (const entry of entries) {
-      const tab = entry.indexOf('\t')
-      const name = entry.slice(tab + 1)
-      const [mode, type, sha] = entry.slice(0, tab).split(' ')
-      if (paths.some((parts) => parts.length === 1 && parts[0] === name)) {
+      if (paths.some((parts) => parts.length === 1 && parts[0] === entry.name)) {
         changed = true
         continue
       }
-      const nested = paths.filter((parts) => parts.length > 1 && parts[0] === name).map((parts) => parts.slice(1))
-      if (nested.length && type === 'tree') {
-        const next = await this.visit(sha, nested)
-        if (next !== sha) changed = true
-        if (next) kept.push(`${mode} ${type} ${next}\t${name}`)
+      const nested = paths.filter((parts) => parts.length > 1 && parts[0] === entry.name).map((parts) => parts.slice(1))
+      if (nested.length && entry.isTree) {
+        const next = await this.visit(entry.sha, nested)
+        if (next !== entry.sha) changed = true
+        if (next) kept.push(entry.rawHead, Buffer.from(next, 'hex'))
       } else {
-        kept.push(entry)
+        kept.push(entry.raw)
       }
     }
     let result: string | null = tree
-    if (changed) {
-      result = kept.length ? await gitLine(this.cwd, ['mktree', '-z'], { input: kept.map((line) => `${line}\0`).join('') }) : null
-    }
+    if (changed) result = kept.length ? this.batch.add(Buffer.concat(kept)) : null
     this.cache.set(key, result)
     return result
   }
@@ -384,7 +473,11 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
   const signaturesLost: string[] = []
   const emptyTree = await gitLine(cwd, ['hash-object', '-t', 'tree', '-w', '--stdin'], { input: EMPTY_TREE_INPUT })
   const edits = plan.edits ?? {}
-  const pruner = plan.removePaths?.length ? new TreePruner(cwd, plan.removePaths) : null
+  const algorithm = await gitLine(cwd, ['rev-parse', '--show-object-format'])
+  const batch = new ObjectBatch(cwd, 'commit', algorithm)
+  const treeBatch = new ObjectBatch(cwd, 'tree', algorithm)
+  const reader = plan.removePaths?.length ? new ObjectReader(cwd) : null
+  const pruner = reader ? new TreePruner(reader, treeBatch, algorithm, plan.removePaths!) : null
   const prune = plan.pruneEmpty ?? false
 
   // Graph of everything reachable from local refs, parents listed before children.
@@ -437,7 +530,6 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
     return known
   }
 
-  const batch = new CommitBatch(cwd, await gitLine(cwd, ['rev-parse', '--show-object-format']))
   const write = (source: RawCommit, parents: string[], tree: string, edit?: CommitEdit): string => {
     const next: RawCommit = { ...source, parents, tree, extraHeaders: [...source.extraHeaders] }
     applyEdit(next, edit)
@@ -539,6 +631,7 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
 
   let sequenceDone = !plan.sequence
   const chainSet = new Set(chain)
+  try {
   for (const sha of order) {
     if (!affected.has(sha)) continue
     if (chainSet.has(sha)) {
@@ -574,11 +667,30 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
     }
     mapping.set(sha, write(source, newParents, tree, edits[sha]))
   }
+  } finally {
+    reader?.close()
+  }
+  await treeBatch.flush()
   await batch.flush()
 
   // Ref updates.
   const refUpdates: RefUpdate[] = []
   const blockers: string[] = []
+  const tagBatch = new ObjectBatch(cwd, 'tag', algorithm)
+  const tagReader = new ObjectReader(cwd)
+  /** Rebuilds an annotated tag on its new target, following tags that point at tags. */
+  const rewriteTag = async (sha: string, name: string): Promise<string> => {
+    const data = await tagReader.read(sha)
+    const text = data.toString('latin1')
+    const head = /^object (\S+)\ntype (\S+)\n/.exec(text)
+    if (!head) throw new Error(`Не удалось разобрать тег ${name}`)
+    const inner = head[2] === 'tag' ? await rewriteTag(head[1], name) : mapped(head[1])
+    if (!inner || inner === head[1]) return sha
+    const stripped = stripTagSignature(data)
+    if (stripped.length !== data.length) warnings.push(`Подпись тега ${name} будет снята`)
+    const rest = stripped.toString('latin1').slice(`object ${head[1]}\n`.length)
+    return tagBatch.add(Buffer.from(`object ${inner}\n${rest}`, 'latin1'))
+  }
   if (!conflicts.length) {
     for (const ref of refs) {
       if (!mapping.has(ref.target)) continue
@@ -592,18 +704,7 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
         )
         continue
       }
-      let after = target
-      if (ref.kind === 'tag' && ref.sha !== ref.target) {
-        const object = (await readObjects(cwd, [ref.sha])).get(ref.sha)!
-        const text = object.data.toString('latin1')
-        if (!text.startsWith(`object ${ref.target}\n`)) {
-          blockers.push(`Вложенный тег ${ref.name} пока не поддерживается`)
-          continue
-        }
-        const stripped = stripTagSignature(object.data)
-        if (stripped.length !== object.data.length) warnings.push(`Подпись тега ${ref.name} будет снята`)
-        after = await writeObject(cwd, 'tag', Buffer.from(stripped.toString('latin1').replace(ref.target, target), 'latin1'))
-      }
+      const after = ref.kind === 'tag' && ref.sha !== ref.target ? await rewriteTag(ref.sha, ref.name) : target
       const update: RefUpdate = {
         ref: ref.ref,
         name: ref.name,
@@ -620,6 +721,8 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
       refUpdates.push(update)
     }
   }
+  tagReader.close()
+  await tagBatch.flush()
 
   // Environment checks.
   const operation = await readOperation(cwd)

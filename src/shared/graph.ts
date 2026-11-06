@@ -78,3 +78,22 @@ export function layoutGraph(commits: GraphInput[]): GraphRow[] {
   }
   return rows
 }
+
+/**
+ * Fits a row into a limited width. Busy histories reach hundreds of lanes. Lanes past the limit
+ * are hidden, while a commit's own node and its edges stay visible at the edge.
+ */
+export function clampRow(row: GraphRow, maxColumns: number): GraphRow {
+  if (row.width <= maxColumns) return row
+  const last = maxColumns - 1
+  const clamp = (lane: { column: number; color: number }): { column: number; color: number } =>
+    lane.column > last ? { ...lane, column: last } : lane
+  return {
+    ...row,
+    column: Math.min(row.column, last),
+    through: row.through.filter((lane) => lane.column <= last),
+    into: row.into.filter((lane) => lane.column <= last),
+    out: row.out.map(clamp),
+    width: maxColumns
+  }
+}

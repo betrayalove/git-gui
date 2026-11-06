@@ -22,7 +22,10 @@ writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo] }))
 const app = await electron.launch({
   executablePath: process.argv[2],
   args: [`--user-data-dir=${userData}`],
-  env: { PATH: '/usr/bin:/bin', HOME: process.env.HOME ?? '', SHELL: process.env.SHELL ?? '/bin/zsh' }
+  // Finder hands apps a minimal PATH. Windows apps inherit the normal environment.
+  env: process.platform === 'darwin'
+    ? { PATH: '/usr/bin:/bin', HOME: process.env.HOME ?? '', SHELL: process.env.SHELL ?? '/bin/zsh' }
+    : { ...process.env } as Record<string, string>
 })
 try {
   const page = await app.firstWindow()
