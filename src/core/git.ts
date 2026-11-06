@@ -27,42 +27,13 @@ export interface RunResult {
 
 let gitBinary = process.env.CHRONICLE_GIT || 'git'
 let baseEnv: NodeJS.ProcessEnv = process.env
-let networkEnv: () => Record<string, string> = () => ({})
-
-/** Commands that talk to a server. Only these see the credentials from `networkEnv`. */
-const NETWORK_COMMANDS = new Set(['fetch', 'pull', 'push', 'ls-remote', 'clone'])
 
 export function configureGit(options: {
   binary?: string
   env?: NodeJS.ProcessEnv
-  networkEnv?: () => Record<string, string>
 }): void {
   if (options.binary) gitBinary = options.binary
   if (options.env) baseEnv = options.env
-  if (options.networkEnv) networkEnv = options.networkEnv
-}
-
-export interface GitCredential {
-  host: string
-  username: string
-  token: string
-}
-
-/**
- * Environment that adds a credential helper per host. It is config set through the environment,
- * so it comes last: helpers the user configured, such as the system keychain, are asked first.
- * The script reads the token from the environment, so it never appears in a process list.
- */
-export function credentialEnv(credentials: GitCredential[]): Record<string, string> {
-  const env: Record<string, string> = { GIT_CONFIG_COUNT: String(credentials.length) }
-  credentials.forEach((credential, index) => {
-    env[`CHRONICLE_USER_${index}`] = credential.username
-    env[`CHRONICLE_TOKEN_${index}`] = credential.token
-    env[`GIT_CONFIG_KEY_${index}`] = `credential.https://${credential.host}.helper`
-    env[`GIT_CONFIG_VALUE_${index}`] =
-      `!f() { test "$1" = get && printf 'username=%s\\npassword=%s\\n' "$CHRONICLE_USER_${index}" "$CHRONICLE_TOKEN_${index}"; }; f`
-  })
-  return env
 }
 
 export function spawnGit(cwd: string, args: string[], env?: Record<string, string>): ChildProcessWithoutNullStreams {
@@ -76,7 +47,6 @@ export function spawnGit(cwd: string, args: string[], env?: Record<string, strin
       GIT_TERMINAL_PROMPT: '0',
       GIT_EDITOR: 'true',
       GIT_MERGE_AUTOEDIT: 'no',
-      ...(NETWORK_COMMANDS.has(args[0]) ? networkEnv() : {}),
       ...env
     }
   })

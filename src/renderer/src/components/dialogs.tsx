@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { EMPTY_DRAFT } from '../../../shared/draft'
-import type { Commit, CommitEdit, ConflictResolution, DiffResult, ForgeBranchInfo, ForgeKind, ForgeRenamePreview, ForgeRequest, PushPreview, SigningSetup, RewriteConflict, RewritePlan, RewritePreview } from '../../../shared/types'
+import type { Commit, CommitEdit, ConflictResolution, DiffResult, PushPreview, SigningSetup, RewriteConflict, RewritePlan, RewritePreview } from '../../../shared/types'
 import { buildPatch } from '../../../shared/patch'
+import { branchSettingsUrl, newRequestUrl, requestLabel } from '../../../shared/remote-url'
 import { appApi } from '../api'
 import { dateToLocalInput, plural, shortSha } from '../format'
 import { useRepo } from '../store'
@@ -302,22 +303,6 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
   const [includeTags, setIncludeTags] = useState(true)
   const [understood, setUnderstood] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [branchInfo, setBranchInfo] = useState<ForgeBranchInfo | null>(null)
-  const [liftProtection, setLiftProtection] = useState(false)
-  const [requests, setRequests] = useState<ForgeRequest[]>([])
-
-  useEffect(() => {
-    if (!preview || !forge?.account || forge.remote !== preview.remote || !preview.remoteSha) return
-    let cancelled = false
-    // Advice only: the push itself is what the server finally accepts or refuses.
-    client.forgeBranchInfo(preview.remoteBranch, preview.remote)
-      .then((info) => { if (!cancelled) setBranchInfo(info) })
-      .catch(() => {})
-    client.forgeListRequests(preview.remote)
-      .then((list) => { if (!cancelled) setRequests(list.filter((item) => item.sourceBranch === preview.remoteBranch)) })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [client, forge, preview])
 
   useEffect(() => {
     let cancelled = false
@@ -337,12 +322,7 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
     if (!preview) return
     close()
     const done = await run('Отправляю на сервер', async () => {
-      if (preview.needsForce && liftProtection) {
-        await client.forcePushWithTemporaryAccess(
-          { branch, expectedRemoteSha: preview.remoteSha, remote: preview.remote, tags: includeTags ? tags : [] },
-          preview.remoteBranch
-        )
-      } else if (preview.needsForce || tags.length) {
+      if (preview.needsForce || tags.length) {
         await client.forcePush({
           branch,
           expectedRemoteSha: preview.remoteSha,
@@ -354,10 +334,15 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
       }
       return true
     })
-    if (done) toast('success', `Ветка ${branch} отправлена на ${preview.remote}`)
+    if (!done) return
+    const requestUrl = forge?.remote === preview.remote && !preview.isDefaultBranch ? newRequestUrl(forge, preview.remoteBranch) : null
+    toast('success', `Ветка ${branch} отправлена на ${preview.remote}`, requestUrl
+      ? { label: `Создать ${requestLabel(forge!.kind)}`, run: () => void appApi.openExternal(requestUrl) }
+      : undefined)
   }
 
   const needsConfirm = preview?.needsForce
+  const protectionUrl = forge && forge.remote === preview?.remote ? branchSettingsUrl(forge) : null
   const nothing = preview && !preview.appear.length && !preview.vanish.length && !tags.length
   return (
     <Modal
@@ -391,28 +376,11 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
             </div>
           )}
           {preview.needsForce && preview.isDefaultBranch && (
-            <div className="banner warn"><Icon name="warning" />Это основная ветка репозитория. Сервер может отклонить перезапись из-за защиты ветки.</div>
-          )}
-          {preview.needsForce && branchInfo?.forcePushAllowed === false && (
-            <div className="banner danger">
-              <Icon name="warning" />
-              <div>
-                Ветка защищена, и force-push на неё запрещён, поэтому сервер, скорее всего, отклонит отправку. Отправка пройдёт, только если у тебя есть право обходить защиту.
-                <button className="btn btn-small" onClick={() => void appApi.openExternal(branchInfo.settingsUrl)}><Icon name="external" size={13} />Открыть настройки защиты</button>
-                {forge?.kind === 'gitlab' && (
-                  <label className="check">
-                    <input type="checkbox" checked={liftProtection} onChange={(event) => setLiftProtection(event.target.checked)} />
-                    <span>Разрешить force-push только на время этой отправки и сразу вернуть защиту</span>
-                  </label>
-                )}
-              </div>
-            </div>
-          )}
-          {preview.needsForce && requests.length > 0 && (
             <div className="banner warn">
               <Icon name="warning" />
               <div>
-                История обновится в открытых запросах: {requests.map((item) => `${requestPrefix(forge?.kind)}${item.number}`).join(', ')}. Комментарии к старым коммитам могут потерять привязку.
+                Это основная ветка репозитория. Сервер может отклонить перезапись из-за защиты ветки.
+                {protectionUrl && <button className="btn btn-small" onClick={() => void appApi.openExternal(protectionUrl)}><Icon name="external" size={13} />Открыть настройки защиты</button>}
               </div>
             </div>
           )}
@@ -451,68 +419,17 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
   )
 }
 
-function requestPrefix(kind: ForgeKind | undefined): string {
-  return kind === 'gitlab' ? '!' : '#'
-}
-
-function RenamePreviewNote({ preview, forgeName, kind }: { preview: ForgeRenamePreview | null; forgeName: string; kind?: ForgeKind }): ReactNode {
-  if (!preview) return <p className="hint">Сверяюсь с сервером {forgeName}…</p>
-  const prefix = requestPrefix(kind)
-  return (
-    <>
-      <p className="hint">{preview.note}</p>
-      {preview.following.length > 0 && (
-        <div className="banner"><Icon name="check" />Перейдут на новое имя: {preview.following.map((item) => `${prefix}${item.number}`).join(', ')}</div>
-      )}
-      {preview.stranded.length > 0 && (
-        <div className="banner warn">
-          <Icon name="warning" />
-          Запросы {preview.stranded.map((item) => `${prefix}${item.number}`).join(', ')} идут от этой ветки, а сервер не умеет менять их источник. Старая ветка останется, пока они открыты.
-        </div>
-      )}
-    </>
-  )
-}
-
 export function RenameBranchDialog({ name, upstream, isDefault }: { name: string; upstream?: string; isDefault: boolean }): ReactNode {
-  const { client, run, toast, snapshot } = useRepo()
+  const { client, run, toast } = useRepo()
   const { close } = useDialogs()
   const [value, setValue] = useState(name)
   const [onRemote, setOnRemote] = useState(Boolean(upstream))
-  const [preview, setPreview] = useState<ForgeRenamePreview | null>(null)
-  const [previewFailed, setPreviewFailed] = useState(false)
-  const forge = snapshot?.forge
-  const serverBranch = upstream && forge && upstream.startsWith(`${forge.remote}/`) ? upstream.slice(forge.remote.length + 1) : null
-  const viaForge = Boolean(onRemote && forge?.account && serverBranch)
   const valid = value.trim() && value.trim() !== name
-
-  useEffect(() => {
-    if (!viaForge || !serverBranch) return
-    let cancelled = false
-    client.forgeRenamePreview(serverBranch, forge!.remote)
-      .then((result) => { if (!cancelled) setPreview(result) })
-      .catch(() => { if (!cancelled) setPreviewFailed(true) })
-    return () => { cancelled = true }
-  }, [client, forge, serverBranch, viaForge])
 
   const submit = async (): Promise<void> => {
     if (!valid) return
     close()
     const newName = value.trim()
-    if (viaForge && !previewFailed) {
-      const result = await run('Переименовываю на сервере', () =>
-        client.forgeRenameBranch({ oldName: serverBranch!, newName, remote: forge!.remote })
-      )
-      if (!result) return
-      result.warnings.forEach((text) => toast('error', text))
-      if (serverBranch !== name) {
-        await run('Переименовываю локальную ветку', () => client.renameBranch({ oldName: name, newName, renameOnRemote: false }))
-      }
-      if (!result.warnings.length) {
-        toast('success', `Ветка переименована: ${newName}. Запросов перенесено: ${result.movedRequests}`)
-      }
-      return
-    }
     const result = await run('Переименовываю ветку', () =>
       client.renameBranch({ oldName: name, newName, renameOnRemote: onRemote })
     )
@@ -541,52 +458,35 @@ export function RenameBranchDialog({ name, upstream, isDefault }: { name: string
           <span>Переименовать и на сервере ({upstream})</span>
         </label>
       )}
-      {viaForge && !previewFailed && <RenamePreviewNote preview={preview} forgeName={forge!.host} kind={forge!.kind} />}
-      {onRemote && upstream && (!viaForge || previewFailed) && (
+      {onRemote && upstream && (
         <>
-          <p className="hint">
-            {previewFailed ? 'Сервер не ответил, поэтому будет обычное переименование через git. ' : ''}
-            На сервере создаётся новая ветка, затем удаляется старая. Открытые Pull Request и Merge Request от старой ветки могут закрыться, а у коллег старое имя останется до обновления.
-            {!forge?.account && ' Подключи аккаунт в настройках, чтобы запросы переносились автоматически.'}
-          </p>
-          {isDefault && (
-            <div className="banner warn"><Icon name="warning" />Это основная ветка. Сервер не даст удалить её, пока ты не сменишь основную ветку в настройках репозитория.</div>
-          )}
+          <p className="hint">{REMOTE_RENAME_NOTE}</p>
+          {isDefault && <DefaultBranchRenameWarning />}
         </>
       )}
     </Modal>
   )
 }
 
+const REMOTE_RENAME_NOTE = 'На сервере создаётся новая ветка, затем удаляется старая. Открытые Pull Request и Merge Request от старой ветки могут закрыться, а у коллег старое имя останется до обновления.'
+
+function DefaultBranchRenameWarning(): ReactNode {
+  return <div className="banner warn"><Icon name="warning" />Это основная ветка. Сервер не даст удалить её, пока ты не сменишь основную ветку в настройках репозитория.</div>
+}
+
 export function RenameRemoteBranchDialog({ remote, name }: { remote: string; name: string }): ReactNode {
   const { client, run, toast, snapshot } = useRepo()
   const { close } = useDialogs()
-  const forge = snapshot?.forge
-  const viaForge = Boolean(forge?.account && forge.remote === remote)
+  const isDefault = snapshot?.remotes.find((item) => item.name === remote)?.defaultBranch === name
   const [value, setValue] = useState(name)
-  const [preview, setPreview] = useState<ForgeRenamePreview | null>(null)
   const valid = value.trim() && value.trim() !== name
-
-  useEffect(() => {
-    if (!viaForge) return
-    let cancelled = false
-    client.forgeRenamePreview(name, remote)
-      .then((result) => { if (!cancelled) setPreview(result) })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [client, name, remote, viaForge])
 
   const submit = (): void => {
     if (!valid) return
     close()
     const newName = value.trim()
     void run('Переименовываю на сервере', async () => {
-      if (viaForge) {
-        const result = await client.forgeRenameBranch({ oldName: name, newName, remote })
-        result.warnings.forEach((text) => toast('error', text))
-      } else {
-        await client.renameRemoteBranch(remote, name, newName)
-      }
+      await client.renameRemoteBranch(remote, name, newName)
       toast('success', `Ветка на сервере переименована: ${newName}`)
     })
   }
@@ -603,57 +503,8 @@ export function RenameRemoteBranchDialog({ remote, name }: { remote: string; nam
         <span>Новое имя</span>
         <input autoFocus value={value} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submit() }} />
       </label>
-      {viaForge
-        ? <RenamePreviewNote preview={preview} forgeName={forge!.host} kind={forge!.kind} />
-        : <p className="hint">Ветка будет переименована на {remote} через git. Открытые Pull Request и Merge Request от неё могут закрыться. Подключи аккаунт, чтобы они переносились автоматически.</p>}
-    </Modal>
-  )
-}
-
-export function NewRequestDialog({ source, target, label, onCreated }: { source: string; target: string; label: string; onCreated: () => void }): ReactNode {
-  const { client, run, toast, snapshot } = useRepo()
-  const { close } = useDialogs()
-  const forge = snapshot?.forge
-  const branches = (snapshot?.refs ?? []).filter((ref) => forge && ref.kind === 'remote' && ref.name.startsWith(`${forge.remote}/`)).map((ref) => ref.name.slice(forge!.remote.length + 1))
-  const [sourceBranch, setSourceBranch] = useState(branches.includes(source) ? source : branches[0] ?? '')
-  const [targetBranch, setTargetBranch] = useState(target)
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [draft, setDraft] = useState(false)
-  const valid = title.trim() && sourceBranch && targetBranch && sourceBranch !== targetBranch
-  const submit = (): void => {
-    close()
-    void run('Создаю запрос', async () => {
-      const created = await client.forgeCreateRequest({ title: title.trim(), description, sourceBranch, targetBranch, draft }, forge?.remote)
-      onCreated()
-      toast('success', `Создан запрос ${requestPrefix(forge?.kind)}${created.number}`, { label: 'Открыть', run: () => void appApi.openExternal(created.url) })
-    })
-  }
-  const select = (value: string, onChange: (next: string) => void): ReactNode => (
-    <select value={value} onChange={(event) => onChange(event.target.value)}>
-      {branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
-    </select>
-  )
-  return (
-    <Modal
-      title={`Новый ${label}`}
-      onClose={close}
-      footer={<>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
-        <button className="btn btn-primary" disabled={!valid} onClick={submit}>Создать</button>
-      </>}
-    >
-      <div className="field-row">
-        <label className="field"><span>Из ветки</span>{select(sourceBranch, setSourceBranch)}</label>
-        <label className="field"><span>В ветку</span>{select(targetBranch, setTargetBranch)}</label>
-      </div>
-      {!branches.includes(source) && <p className="hint">Ветка {source} ещё не на сервере. Сначала отправь её кнопкой Push.</p>}
-      <label className="field"><span>Заголовок</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-      <label className="field"><span>Описание</span><textarea rows={4} value={description} onChange={(event) => setDescription(event.target.value)} /></label>
-      <label className="check">
-        <input type="checkbox" checked={draft} onChange={(event) => setDraft(event.target.checked)} />
-        <span>Черновик</span>
-      </label>
+      <p className="hint">{REMOTE_RENAME_NOTE}</p>
+      {isDefault && <DefaultBranchRenameWarning />}
     </Modal>
   )
 }

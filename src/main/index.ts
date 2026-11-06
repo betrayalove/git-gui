@@ -4,13 +4,11 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron'
-import { configureForge, listAccountRepos } from '../core/forge'
-import { checkGitVersion, configureGit, credentialEnv } from '../core/git'
+import { checkGitVersion, configureGit } from '../core/git'
 import { cloneRepository, initRepository } from '../core/ops'
 import { isRepository, repoRoot } from '../core/read'
 import { listSchedules, publishDue } from '../core/schedule'
 import { checkForUpdate } from '../core/updates'
-import { AccountStore } from './accounts'
 import { api, type AppApi, type ApiMethod } from './api'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
@@ -23,8 +21,6 @@ let tray: Tray | null = null
 let quitting = false
 const openRepos = new Set<string>()
 let recent: string[] = []
-let accounts: AccountStore
-let shellEnv: NodeJS.ProcessEnv = process.env
 const HIDDEN_FLAG = '--chronicle-hidden'
 let startedHidden = false
 let updateChecks = true
@@ -64,10 +60,9 @@ async function adoptLoginShellEnv(): Promise<void> {
     const { stdout } = await promisify(execFile)(shellPath, ['-ilc', 'env'], { timeout: 5000 })
     const env: NodeJS.ProcessEnv = { ...process.env }
     for (const line of stdout.split('\n')) {
-      const match = /^(PATH|SSH_AUTH_SOCK|GIT_SSH_COMMAND|GIT_ASKPASS)=(.*)$/.exec(line)
+      const match = /^(PATH|SSH_AUTH_SOCK|GIT_SSH_COMMAND)=(.*)$/.exec(line)
       if (match) env[match[1]] = match[2]
     }
-    shellEnv = env
     configureGit({ env })
   } catch {
     // The inherited environment still works for most setups.
@@ -207,24 +202,6 @@ const appHandlers: AppApi = {
     if (!url.startsWith('https://')) throw new Error(`Адрес не открыт: ${url}`)
     await shell.openExternal(url)
   },
-  accounts: async () => accounts.list(),
-  addAccount: (kind, host, token) => accounts.add(kind, host, token),
-  addAccountFromGitHubCli: async () => {
-    let token: string
-    try {
-      const { stdout } = await promisify(execFile)('gh', ['auth', 'token'], { env: shellEnv, timeout: 10000 })
-      token = stdout.trim()
-    } catch {
-      throw new Error('Не удалось получить вход из GitHub CLI. Установи gh и выполни gh auth login.')
-    }
-    return accounts.add('github', 'github.com', token)
-  },
-  removeAccount: (id) => accounts.remove(id),
-  accountRepos: async (id) => {
-    const resolved = accounts.byId(id)
-    if (!resolved) throw new Error('Аккаунт не найден')
-    return listAccountRepos(resolved.account, resolved.token)
-  },
   checkForUpdates: () => checkForUpdate(app.getVersion()),
   updateChecksEnabled: async () => updateChecks && app.isPackaged,
   setUpdateChecksEnabled: async (enabled) => {
@@ -277,10 +254,6 @@ app.on('second-instance', showWindow)
 void app.whenReady().then(async () => {
   await adoptLoginShellEnv()
   await loadState()
-  accounts = new AccountStore(join(app.getPath('userData'), 'accounts.json'))
-  await accounts.load()
-  configureForge({ findAccount: (host) => accounts.find(host) })
-  configureGit({ networkEnv: () => credentialEnv(accounts.gitCredentials()) })
   registerIpc()
   startedHidden = process.argv.includes(HIDDEN_FLAG) || (app.isPackaged && app.getLoginItemSettings().wasOpenedAtLogin)
   try {

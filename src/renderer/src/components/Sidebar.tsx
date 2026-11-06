@@ -1,5 +1,7 @@
 import { useMemo, useState, type MouseEvent, type ReactNode } from 'react'
+import { defaultBranchSettingsUrl, newRequestUrl, requestLabel, requestsPageUrl } from '../../../shared/remote-url'
 import type { RefInfo } from '../../../shared/types'
+import { appApi } from '../api'
 import { useRepo, type View } from '../store'
 import { CleanHistoryDialog, ConfirmDialog, PromptDialog, PushDialog, RenameBranchDialog, RenameRemoteBranchDialog, ReplaceAuthorDialog, useDialogs } from './dialogs'
 import { ContextMenu, Icon, type MenuItem } from './ui'
@@ -42,12 +44,14 @@ export function Sidebar(): ReactNode {
   const changes = status?.files.length ?? 0
   const pending = snapshot?.schedules.filter((item) => item.state === 'pending').length ?? 0
   const defaults = new Set(remotes.map((remote) => `${remote.name}/${remote.defaultBranch}`))
+  const forge = snapshot?.forge
+  const requestsPage = forge ? requestsPageUrl(forge) : null
+  const label = requestLabel(forge?.kind ?? null)
 
   const nav: { id: View; label: string; icon: string; count?: number }[] = [
     { id: 'history', label: 'История', icon: 'history' },
     { id: 'changes', label: 'Изменения', icon: 'changes', count: changes },
     { id: 'stash', label: 'Stash', icon: 'stash', count: snapshot?.stashes.length },
-    { id: 'requests', label: snapshot?.forge?.kind === 'gitlab' ? 'Merge Requests' : 'Pull Requests', icon: 'merge' },
     { id: 'schedule', label: 'Публикации', icon: 'schedule', count: pending },
     { id: 'journal', label: 'Журнал', icon: 'journal' }
   ]
@@ -65,6 +69,11 @@ export function Sidebar(): ReactNode {
         { label: 'Перейти на ветку', icon: 'branch', disabled: branch.isHead, run: () => void run('Переключаюсь', () => client.checkout(branch.name)) },
         { label: 'Переименовать…', run: () => show(<RenameBranchDialog name={branch.name} upstream={branch.upstream} isDefault={defaults.has(branch.upstream ?? '')} />) },
         { label: 'Отправить на сервер…', icon: 'push', run: () => show(<PushDialog branch={branch.name} />) },
+        ...(forge && branch.upstream?.startsWith(`${forge.remote}/`) && newRequestUrl(forge, branch.upstream.slice(forge.remote.length + 1)) ? [{
+          label: `Создать ${label} на сайте`,
+          icon: 'external',
+          run: () => void appApi.openExternal(newRequestUrl(forge, branch.upstream!.slice(forge.remote.length + 1))!)
+        }] : []),
         { label: `Влить в ${status?.head ?? 'текущую'}`, disabled: branch.isHead || !status?.head, run: () => void run('Вливаю', () => client.mergeBranch(branch.ref)) },
         { separator: true },
         {
@@ -90,16 +99,11 @@ export function Sidebar(): ReactNode {
       items: [
         { label: 'Создать локальную ветку', icon: 'branch', run: () => void run('Переключаюсь', () => client.checkoutRemoteBranch(ref.name)) },
         { label: 'Переименовать на сервере…', run: () => show(<RenameRemoteBranchDialog remote={remote} name={name} />) },
-        {
-          label: 'Сделать основной на сервере…',
-          disabled: isDefault || !snapshot?.forge?.account || snapshot.forge.remote !== remote,
-          run: () => show(<ConfirmDialog
-            title="Сменить основную ветку"
-            confirmLabel="Сделать основной"
-            body={<>Ветка <b>{name}</b> станет основной на <b>{remote}</b>. Новые клоны и запросы будут использовать её по умолчанию.</>}
-            onConfirm={() => void run('Меняю основную ветку', () => client.forgeSetDefaultBranch(name, remote))}
-          />)
-        },
+        ...(forge?.remote === remote && defaultBranchSettingsUrl(forge) ? [{
+          label: 'Сменить основную ветку на сайте',
+          icon: 'external',
+          run: () => void appApi.openExternal(defaultBranchSettingsUrl(forge)!)
+        }] : []),
         { separator: true },
         {
           label: 'Удалить с сервера…', icon: 'trash', danger: true, disabled: isDefault,
@@ -195,6 +199,9 @@ export function Sidebar(): ReactNode {
       <div className="side-tools">
         <button onClick={() => { setView('history'); show(<ReplaceAuthorDialog />) }}><Icon name="users" size={14} />Заменить автора</button>
         <button onClick={() => show(<CleanHistoryDialog />)}><Icon name="broom" size={14} />Очистка истории</button>
+        {requestsPage && (
+          <button onClick={() => void appApi.openExternal(requestsPage)}><Icon name="external" size={14} />{label} на сайте</button>
+        )}
         {!remotes.length && (
           <button onClick={() => show(<PromptDialog
             title="Добавить remote"
