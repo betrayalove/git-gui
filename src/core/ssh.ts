@@ -125,13 +125,19 @@ function shortType(type: string): string {
   return type.replace(/^ssh-/, '').replace(/^ecdsa-sha2-nistp\d+$/, 'ecdsa').replace(/@openssh\.com$/, '')
 }
 
+/** Git's ssh on Windows may spell paths as C:/x or /c/x. Keys are compared by path, so one form is needed. */
+export function nativePath(path: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform !== 'win32') return path
+  return path.replace(/^\/([a-zA-Z])\//, '$1:/').replaceAll('/', '\\')
+}
+
 async function identityFiles(host: string): Promise<string[]> {
   const { ssh } = await findTools()
   const { stdout } = await runTool(ssh, [...configArgs(), '-G', '--', host], { timeoutMs: CHECK_TIMEOUT_MS })
   return stdout.split('\n')
     .map((line) => /^identityfile\s+(.+)$/i.exec(line.trim())?.[1])
     .filter((path): path is string => Boolean(path))
-    .map((path) => (path.startsWith('~/') ? join(sshHome(), path.slice(2)) : path))
+    .map((path) => nativePath(path.startsWith('~/') ? join(sshHome(), path.slice(2)) : path))
 }
 
 async function agentKeys(): Promise<PublicLine[]> {

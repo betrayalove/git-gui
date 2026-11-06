@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { PromptBroker, normalizeKeyPath, type SecretStore } from '../src/core/prompt-broker'
 import { classifyAccessError, parsePrompt, sshKeysPage, targetFromUrl, toSshUrl, type AccessPrompt, type PromptReply } from '../src/shared/access'
-import { gitUsrBin, statusFromOutput } from '../src/core/ssh'
+import { gitUsrBin, nativePath, statusFromOutput } from '../src/core/ssh'
 import { tempDir } from './helpers'
 
 describe('recognizing refused connections', () => {
@@ -88,6 +88,12 @@ describe('finding the ssh that comes with Git on Windows', () => {
     mkdirSync(join(root, 'ucrt64', 'libexec', 'git-core'), { recursive: true })
     writeFileSync(join(root, 'usr', 'bin', 'ssh.exe'), '')
     expect(gitUsrBin(join(root, 'ucrt64', 'libexec', 'git-core'))).toBe(join(root, 'usr', 'bin'))
+  })
+
+  it('reads every spelling of a Windows path as one', () => {
+    expect(nativePath('C:/Users/me/.ssh/id', 'win32')).toBe('C:\\Users\\me\\.ssh\\id')
+    expect(nativePath('/c/Users/me/.ssh/id', 'win32')).toBe('c:\\Users\\me\\.ssh\\id')
+    expect(nativePath('/home/me/.ssh/id', 'linux')).toBe('/home/me/.ssh/id')
   })
 
   it('gives up where there is none', () => {
