@@ -16,7 +16,8 @@
     "test:e2e": "electron-vite build && vitest run --config vitest.e2e.config.ts",
     "dist": "electron-vite build && electron-builder --publish never",
     "dist:mac": "electron-vite build && electron-builder --mac --publish never",
-    "dist:win": "electron-vite build && electron-builder --win --publish never"
+    "dist:win": "electron-vite build && electron-builder --win --publish never",
+    "dist:win:zip": "electron-vite build && electron-builder --win zip --x64 --publish never"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -62,7 +63,18 @@
     },
     "win": {
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
