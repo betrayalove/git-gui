@@ -1,6 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { appApi, platform } from '../api'
 import { Icon, Modal } from '../components/ui'
+import type { ForgeAccount, ForgeRepoSummary } from '../../../shared/types'
+import { formatRelative } from '../format'
+import { SettingsDialog } from './SettingsDialog'
 
 function CloneDialog({ onClose, onOpen }: { onClose: () => void; onOpen: (repo: string) => void }): ReactNode {
   const [url, setUrl] = useState('')
@@ -42,10 +45,94 @@ function CloneDialog({ onClose, onOpen }: { onClose: () => void; onOpen: (repo: 
   )
 }
 
+function AccountCloneDialog({ onClose, onOpen, onOpenSettings }: {
+  onClose: () => void
+  onOpen: (repo: string) => void
+  onOpenSettings: () => void
+}): ReactNode {
+  const [accounts, setAccounts] = useState<ForgeAccount[] | null>(null)
+  const [accountId, setAccountId] = useState('')
+  const [repos, setRepos] = useState<ForgeRepoSummary[] | null>(null)
+  const [query, setQuery] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [cloning, setCloning] = useState<string | null>(null)
+
+  useEffect(() => {
+    void appApi.accounts().then((list) => {
+      setAccounts(list)
+      if (list[0]) setAccountId(list[0].id)
+    })
+  }, [])
+  useEffect(() => {
+    if (!accountId) return
+    let cancelled = false
+    setRepos(null)
+    setError(null)
+    appApi.accountRepos(accountId)
+      .then((list) => { if (!cancelled) setRepos(list) })
+      .catch((reason: Error) => { if (!cancelled) setError(reason.message) })
+    return () => { cancelled = true }
+  }, [accountId])
+
+  const clone = async (repo: ForgeRepoSummary): Promise<void> => {
+    const parent = await appApi.pickFolder()
+    if (!parent) return
+    setCloning(repo.path)
+    setError(null)
+    try {
+      onOpen(await appApi.cloneRepository(repo.cloneUrl, parent, repo.path.split('/').at(-1)!))
+    } catch (reason) {
+      setError((reason as Error).message)
+      setCloning(null)
+    }
+  }
+  const shown = (repos ?? []).filter((repo) => repo.path.toLowerCase().includes(query.trim().toLowerCase()))
+  return (
+    <Modal title="Открыть из аккаунта" wide onClose={onClose}>
+      {accounts && !accounts.length && (
+        <div className="prose">
+          <p>Аккаунт ещё не подключён.</p>
+          <button className="btn btn-primary" onClick={onOpenSettings}>Подключить аккаунт</button>
+        </div>
+      )}
+      {accounts && accounts.length > 1 && (
+        <label className="field">
+          <span>Аккаунт</span>
+          <select value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+            {accounts.map((account) => <option key={account.id} value={account.id}>{account.username} · {account.host}</option>)}
+          </select>
+        </label>
+      )}
+      {error && <div className="banner danger"><Icon name="warning" />{error}</div>}
+      {accounts && accounts.length > 0 && (
+        <>
+          <label className="field">
+            <span>Поиск</span>
+            <input autoFocus value={query} placeholder="Название репозитория" onChange={(event) => setQuery(event.target.value)} />
+          </label>
+          {!repos && !error && <div className="diff-loading">Загружаю список…</div>}
+          <div className="repo-list">
+            {shown.map((repo) => (
+              <button key={repo.path} className="list-card" disabled={Boolean(cloning)} onClick={() => void clone(repo)}>
+                <b className="truncate">{repo.path}{repo.private && <span className="pill small repo-private">приватный</span>}</b>
+                <span className="muted truncate">
+                  {cloning === repo.path ? 'Клонирую…' : `${repo.description ? `${repo.description} · ` : ''}${formatRelative(repo.updatedAt)}`}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </Modal>
+  )
+}
+
 export function Welcome({ onOpen }: { onOpen: (repo: string) => void }): ReactNode {
   const [recent, setRecent] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [cloning, setCloning] = useState(false)
+  const [fromAccount, setFromAccount] = useState(false)
+  const [settings, setSettings] = useState(false)
   useEffect(() => {
     void appApi.recentRepos().then(setRecent)
   }, [])
@@ -75,7 +162,8 @@ export function Welcome({ onOpen }: { onOpen: (repo: string) => void }): ReactNo
         {error && <div className="banner danger"><Icon name="warning" />{error}</div>}
         <div className="welcome-actions">
           <button className="btn btn-primary" onClick={() => void attempt(() => appApi.pickRepository())}><Icon name="folder" size={15} />Открыть репозиторий</button>
-          <button className="btn" onClick={() => setCloning(true)}><Icon name="cloud" size={15} />Клонировать</button>
+          <button className="btn" onClick={() => setFromAccount(true)}><Icon name="cloud" size={15} />Из аккаунта</button>
+          <button className="btn" onClick={() => setCloning(true)}><Icon name="fetch" size={15} />Клонировать по адресу</button>
           <button className="btn" onClick={() => void attempt(async () => {
             const folder = await appApi.pickFolder()
             return folder ? appApi.initRepository(folder) : null
@@ -105,7 +193,16 @@ export function Welcome({ onOpen }: { onOpen: (repo: string) => void }): ReactNo
           </div>
         )}
       </div>
+      <button className="welcome-settings btn btn-ghost" onClick={() => setSettings(true)}><Icon name="gear" size={15} />Настройки</button>
       {cloning && <CloneDialog onClose={() => setCloning(false)} onOpen={onOpen} />}
+      {fromAccount && (
+        <AccountCloneDialog
+          onClose={() => setFromAccount(false)}
+          onOpen={onOpen}
+          onOpenSettings={() => { setFromAccount(false); setSettings(true) }}
+        />
+      )}
+      {settings && <SettingsDialog onClose={() => setSettings(false)} />}
     </div>
   )
 }

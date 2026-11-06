@@ -235,3 +235,66 @@ export interface BlobContent {
   binary: boolean
   tooLarge: boolean
 }
+
+export type ForgeKind = 'github' | 'gitlab'
+
+/** A connected account. The token never leaves the main process. */
+export interface ForgeAccount {
+  id: string
+  kind: ForgeKind
+  host: string
+  apiUrl: string
+  username: string
+}
+
+export interface ForgeContext {
+  kind: ForgeKind
+  host: string
+  path: string
+  webUrl: string
+  remote: string
+  account: { username: string } | null
+}
+
+export interface ForgeRequest {
+  number: number
+  title: string
+  url: string
+  author: string
+  sourceBranch: string
+  targetBranch: string
+  draft: boolean
+  updatedAt: string
+}
+
+export interface ForgeBranchInfo {
+  protected: boolean
+  /** Null when the account may not read the protection settings. */
+  forcePushAllowed: boolean | null
+  settingsUrl: string
+}
+
+export interface ForgeRepoSummary {
+  path: string
+  description: string
+  cloneUrl: string
+  webUrl: string
+  private: boolean
+  updatedAt: string
+}
+
+export interface ForgeRenamePreview {
+  isDefault: boolean
+  protected: boolean
+  /** Requests that will follow the new name. */
+  following: ForgeRequest[]
+  /** Requests the server cannot move. Their source branch has to stay. */
+  stranded: ForgeRequest[]
+  note: string
+}
+
+export interface ForgeRenameResult {
+  oldBranchDeleted: boolean
+  movedRequests: number
+  warnings: string[]
+}

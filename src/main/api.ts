@@ -1,8 +1,9 @@
+import * as forge from '../core/forge'
 import * as ops from '../core/ops'
 import * as read from '../core/read'
 import * as rewrite from '../core/rewrite'
 import * as schedule from '../core/schedule'
-import type { RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
+import type { ForgeAccount, ForgeContext, ForgeKind, ForgeRepoSummary, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
 
 export interface RepoSnapshot {
   status: RepoStatus
@@ -11,20 +12,22 @@ export interface RepoSnapshot {
   stashes: StashEntry[]
   journal: JournalEntry[]
   schedules: ScheduledPublish[]
+  forge: ForgeContext | null
 }
 
 /** Everything the interface may call. The first argument is always the repository path. */
 export const api = {
   snapshot: async (repo: string): Promise<RepoSnapshot> => {
-    const [status, refs, remotes, stashes, journal, schedules] = await Promise.all([
+    const [status, refs, remotes, stashes, journal, schedules, forgeInfo] = await Promise.all([
       read.readStatus(repo),
       read.readRefs(repo),
       read.readRemotes(repo),
       read.readStashes(repo),
       rewrite.readJournal(repo),
-      schedule.listSchedules(repo)
+      schedule.listSchedules(repo),
+      forge.forgeContext(repo).catch(() => null)
     ])
-    return { status, refs, remotes, stashes, journal, schedules }
+    return { status, refs, remotes, stashes, journal, schedules, forge: forgeInfo }
   },
   readLog: read.readLog,
   commitDiff: read.commitDiff,
@@ -76,6 +79,13 @@ export const api = {
   purgeBackups: rewrite.purgeBackups,
   rewrittenTagsOnRemote: rewrite.rewrittenTagsOnRemote,
 
+  forgeBranchInfo: forge.forgeBranchInfo,
+  forgeListRequests: forge.forgeListRequests,
+  forgeCreateRequest: forge.forgeCreateRequest,
+  forgeRenamePreview: forge.forgeRenamePreview,
+  forgeRenameBranch: forge.forgeRenameBranch,
+  forgeSetDefaultBranch: forge.forgeSetDefaultBranch,
+
   schedulePublish: schedule.schedulePublish,
   publishNow: (repo: string, id: string) => schedule.publishNow(repo, id),
   cancelSchedule: schedule.cancelSchedule,
@@ -101,6 +111,14 @@ export interface AppApi {
   cloneRepository(url: string, parent: string, directory: string): Promise<string>
   initRepository(path: string): Promise<string>
   copyText(text: string): Promise<void>
+  openExternal(url: string): Promise<void>
+  accounts(): Promise<ForgeAccount[]>
+  addAccount(kind: ForgeKind, host: string, token: string): Promise<ForgeAccount>
+  addAccountFromGitHubCli(): Promise<ForgeAccount>
+  removeAccount(id: string): Promise<void>
+  accountRepos(id: string): Promise<ForgeRepoSummary[]>
+  autostart(): Promise<{ available: boolean; enabled: boolean }>
+  setAutostart(enabled: boolean): Promise<void>
 }
 
 export interface ChronicleBridge {

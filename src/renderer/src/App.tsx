@@ -10,7 +10,9 @@ import { ChangesView } from './views/ChangesView'
 import { HistoryView } from './views/HistoryView'
 import { Inspector } from './views/Inspector'
 import { JournalView } from './views/JournalView'
+import { RequestsView } from './views/RequestsView'
 import { ScheduleView } from './views/ScheduleView'
+import { SettingsDialog } from './views/SettingsDialog'
 import { StashView } from './views/StashView'
 import { Welcome } from './views/Welcome'
 
@@ -19,8 +21,8 @@ function baseName(path: string): string {
 }
 
 function Toolbar({ search, onSearch }: { search: string; onSearch: (value: string) => void }): ReactNode {
-  const { repo, snapshot, client, run, toast, closeRepo, busy, view } = useRepo()
-  const { show } = useDialogs()
+  const { repo, snapshot, client, run, toast, closeRepo, busy, view, reload } = useRepo()
+  const { show, close } = useDialogs()
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const status = snapshot?.status
   const lastApplied = [...(snapshot?.journal ?? [])].reverse().find((entry) => entry.state === 'applied')
@@ -69,6 +71,7 @@ function Toolbar({ search, onSearch }: { search: string; onSearch: (value: strin
       </div>
       <div className="toolbar-right">
         {busy && <span className="busy"><span className="spinner" />{busy}…</span>}
+        <button className="icon-btn" title="Настройки" aria-label="Настройки" onClick={() => show(<SettingsDialog onClose={close} onChanged={() => void reload()} />)}><Icon name="gear" /></button>
         {view === 'history' && (
           <label className="search">
             <Icon name="search" size={14} />
@@ -144,6 +147,7 @@ function Workspace(): ReactNode {
           )}
           {view === 'changes' && <ChangesView />}
           {view === 'stash' && <StashView />}
+          {view === 'requests' && <RequestsView />}
           {view === 'schedule' && <ScheduleView />}
           {view === 'journal' && <JournalView />}
           <DraftBar />

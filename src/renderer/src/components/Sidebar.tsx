@@ -47,6 +47,7 @@ export function Sidebar(): ReactNode {
     { id: 'history', label: 'История', icon: 'history' },
     { id: 'changes', label: 'Изменения', icon: 'changes', count: changes },
     { id: 'stash', label: 'Stash', icon: 'stash', count: snapshot?.stashes.length },
+    { id: 'requests', label: snapshot?.forge?.kind === 'gitlab' ? 'Merge Requests' : 'Pull Requests', icon: 'merge' },
     { id: 'schedule', label: 'Публикации', icon: 'schedule', count: pending },
     { id: 'journal', label: 'Журнал', icon: 'journal' }
   ]
@@ -89,6 +90,16 @@ export function Sidebar(): ReactNode {
       items: [
         { label: 'Создать локальную ветку', icon: 'branch', run: () => void run('Переключаюсь', () => client.checkoutRemoteBranch(ref.name)) },
         { label: 'Переименовать на сервере…', run: () => show(<RenameRemoteBranchDialog remote={remote} name={name} />) },
+        {
+          label: 'Сделать основной на сервере…',
+          disabled: isDefault || !snapshot?.forge?.account || snapshot.forge.remote !== remote,
+          run: () => show(<ConfirmDialog
+            title="Сменить основную ветку"
+            confirmLabel="Сделать основной"
+            body={<>Ветка <b>{name}</b> станет основной на <b>{remote}</b>. Новые клоны и запросы будут использовать её по умолчанию.</>}
+            onConfirm={() => void run('Меняю основную ветку', () => client.forgeSetDefaultBranch(name, remote))}
+          />)
+        },
         { separator: true },
         {
           label: 'Удалить с сервера…', icon: 'trash', danger: true, disabled: isDefault,

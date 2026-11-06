@@ -10,7 +10,7 @@ function keyOfRefs(snapshot: RepoSnapshot): string {
   return `${snapshot.status.headSha}|${snapshot.refs.map((ref) => `${ref.ref}=${ref.sha}`).join(',')}`
 }
 
-export type View = 'history' | 'changes' | 'stash' | 'schedule' | 'journal'
+export type View = 'history' | 'changes' | 'stash' | 'requests' | 'schedule' | 'journal'
 
 export interface Toast {
   id: number

@@ -239,7 +239,8 @@ export async function removeRemote(cwd: string, name: string): Promise<void> {
 }
 
 export async function cloneRepository(url: string, parentDir: string, directory: string): Promise<string> {
-  await git(parentDir, ['clone', '--', url, directory])
+  // Excludes transports such as ext::, which run commands named in the URL.
+  await git(parentDir, ['clone', '--', url, directory], { env: { GIT_ALLOW_PROTOCOL: 'https:http:ssh:git:file' } })
   return gitLine(`${parentDir}/${directory}`, ['rev-parse', '--show-toplevel'])
 }
 

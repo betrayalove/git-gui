@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
 import {
-  applyPatch, commit, continueOperation, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
+  applyPatch, cloneRepository, commit, continueOperation, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
   readWorktreeConflicts, resolveWorktreeConflict, stageFiles, stashApply, stashClear, stashDrop, stashPush, unstageFiles
 } from '../src/core/ops'
 import { commitDiff, parseDiff, readBlob, readLog, readRefs, readRemotes, readStashes, readStatus, stashDiff, worktreeDiff } from '../src/core/read'
@@ -223,6 +223,18 @@ describe('remote work', () => {
     expect((await readStatus(dir)).behind).toBe(1)
     await pull(dir, 'ff-only')
     expect(await log(dir)).toEqual(['two', 'one'])
+  })
+})
+
+describe('cloning', () => {
+  it('clones, and refuses transports that run commands', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', '1\n', 'one')
+    const parent = tempDir()
+    const root = await cloneRepository(dir, parent, 'copy')
+    expect(await log(root)).toEqual(['one'])
+    await expect(cloneRepository('ext::sh -c touch% /tmp/chronicle-pwned', parent, 'bad')).rejects.toThrow()
+    await expect(cloneRepository('--upload-pack=touch', parent, 'bad2')).rejects.toThrow()
   })
 })
 
