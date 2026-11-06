@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
+import { gitUsrBin } from '../src/core/ssh'
 
 /** Why the last start failed, so a required server that is missing explains itself. */
 export let sshdFailure = ''
@@ -19,8 +20,9 @@ export interface SshServer {
 export function sshTool(name: string): string {
   if (process.platform !== 'win32') return name
   const execPath = execFileSync('git', ['--exec-path'], { encoding: 'utf8' }).trim()
-  const root = /^(.*?)[\\/]mingw64[\\/]/i.exec(execPath)?.[1] ?? ''
-  return join(root, 'usr', 'bin', `${name}.exe`)
+  const bin = gitUsrBin(execPath)
+  if (!bin) throw new Error(`No ssh tools found near ${execPath}`)
+  return join(bin, `${name}.exe`)
 }
 
 function findSshd(): string | null {

@@ -55,6 +55,16 @@ function configArgs(): string[] {
   return process.env.CHRONICLE_SSH_CONFIG ? ['-F', process.env.CHRONICLE_SSH_CONFIG] : []
 }
 
+/** Finds Git's own tools by walking up from its exec path. The folder between them varies by Git version. */
+export function gitUsrBin(execPath: string): string | null {
+  for (let dir = execPath, depth = 0; depth < 6; dir = dirname(dir), depth++) {
+    const bin = join(dir, 'usr', 'bin')
+    if (existsSync(join(bin, 'ssh.exe'))) return bin
+    if (dirname(dir) === dir) break
+  }
+  return null
+}
+
 let tools: Promise<{ ssh: string; keygen: string; add: string }> | null = null
 
 /**
@@ -66,12 +76,8 @@ function findTools(): Promise<{ ssh: string; keygen: string; add: string }> {
     const bare = { ssh: 'ssh', keygen: 'ssh-keygen', add: 'ssh-add' }
     if (process.platform !== 'win32') return bare
     try {
-      const execPath = await gitLine(process.cwd(), ['--exec-path'])
-      const match = /^(.*?)[\\/](?:mingw64|mingw32|clangarm64)[\\/]/i.exec(execPath)
-      const bin = match ? join(match[1], 'usr', 'bin') : ''
-      if (bin && existsSync(join(bin, 'ssh.exe'))) {
-        return { ssh: join(bin, 'ssh.exe'), keygen: join(bin, 'ssh-keygen.exe'), add: join(bin, 'ssh-add.exe') }
-      }
+      const bin = gitUsrBin(await gitLine(process.cwd(), ['--exec-path']))
+      if (bin) return { ssh: join(bin, 'ssh.exe'), keygen: join(bin, 'ssh-keygen.exe'), add: join(bin, 'ssh-add.exe') }
     } catch {
       // Falls back to whatever is on PATH.
     }

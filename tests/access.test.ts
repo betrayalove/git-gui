@@ -1,7 +1,10 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { PromptBroker, normalizeKeyPath, type SecretStore } from '../src/core/prompt-broker'
 import { classifyAccessError, parsePrompt, sshKeysPage, targetFromUrl, toSshUrl, type AccessPrompt, type PromptReply } from '../src/shared/access'
-import { statusFromOutput } from '../src/core/ssh'
+import { gitUsrBin, statusFromOutput } from '../src/core/ssh'
+import { tempDir } from './helpers'
 
 describe('recognizing refused connections', () => {
   it.each([
@@ -75,6 +78,20 @@ describe('addresses', () => {
     expect(sshKeysPage('github', 'github.com')).toBe('https://github.com/settings/ssh/new')
     expect(sshKeysPage('gitlab', 'gitlab.com')).toBe('https://gitlab.com/-/user_settings/ssh_keys')
     expect(sshKeysPage('gitlab', 'git.corp.example')).toBe('https://git.corp.example/-/user_settings/ssh_keys')
+  })
+})
+
+describe('finding the ssh that comes with Git on Windows', () => {
+  it('walks up from the exec path, whatever folder is in between', () => {
+    const root = tempDir()
+    mkdirSync(join(root, 'usr', 'bin'), { recursive: true })
+    mkdirSync(join(root, 'ucrt64', 'libexec', 'git-core'), { recursive: true })
+    writeFileSync(join(root, 'usr', 'bin', 'ssh.exe'), '')
+    expect(gitUsrBin(join(root, 'ucrt64', 'libexec', 'git-core'))).toBe(join(root, 'usr', 'bin'))
+  })
+
+  it('gives up where there is none', () => {
+    expect(gitUsrBin(join(tempDir(), 'libexec', 'git-core'))).toBeNull()
   })
 })
 
