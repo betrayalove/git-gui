@@ -1,13 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { RepoClient, RepoSnapshot } from '../../main/api'
+import { classifyAccessError, issueSummary, type AccessIssue } from '../../shared/access'
 import { EMPTY_DRAFT, draftChangeCount, type Draft } from '../../shared/draft'
+import { branchSettingsUrl } from '../../shared/remote-url'
 import type { Commit } from '../../shared/types'
-import { repoClient } from './api'
+import { appApi, repoClient } from './api'
 
 const PAGE = 5000
 
 function keyOfRefs(snapshot: RepoSnapshot): string {
   return `${snapshot.status.headSha}|${snapshot.refs.map((ref) => `${ref.ref}=${ref.sha}`).join(',')}`
+}
+
+/** A refused connection, and how to repeat what failed once it is fixed. */
+export interface AccessRequest {
+  issue: AccessIssue
+  retry?: () => void
 }
 
 export type View = 'history' | 'changes' | 'stash' | 'schedule' | 'journal'
@@ -41,6 +49,8 @@ interface RepoContextValue {
   toasts: Toast[]
   dismissToast: (id: number) => void
   closeRepo: () => void
+  access: AccessRequest | null
+  showAccess: (request: AccessRequest | null) => void
 }
 
 const RepoContext = createContext<RepoContextValue | null>(null)
@@ -65,6 +75,8 @@ export function RepoProvider({ repo, onClose, children }: { repo: string; onClos
   const loaded = useRef(PAGE)
   const refsKey = useRef('')
   const [staleNotice, setStaleNotice] = useState(false)
+  const [access, setAccess] = useState<AccessRequest | null>(null)
+  const forgeRef = useRef<RepoSnapshot['forge']>(null)
 
   const dismissToast = useCallback((id: number) => {
     setToasts((items) => items.filter((item) => item.id !== id))
@@ -82,6 +94,7 @@ export function RepoProvider({ repo, onClose, children }: { repo: string; onClos
       client.readLog({ limit: loaded.current + 1 })
     ])
     setSnapshot(nextSnapshot)
+    forgeRef.current = nextSnapshot.forge
     setHasMore(nextCommits.length > loaded.current)
     setCommits(nextCommits.slice(0, loaded.current))
     refsKey.current = keyOfRefs(nextSnapshot)
@@ -110,7 +123,19 @@ export function RepoProvider({ repo, onClose, children }: { repo: string; onClos
     try {
       return await action()
     } catch (error) {
-      toast('error', (error as Error).message)
+      const message = (error as Error).message
+      const issue = classifyAccessError(message)
+      const forge = forgeRef.current
+      if (issue === 'protected') {
+        const settings = forge && branchSettingsUrl(forge)
+        toast('error', issueSummary(issue), settings ? { label: 'Настройки защиты', run: () => void appApi.openExternal(settings) } : undefined)
+      } else if (issue === 'offline' || issue === 'ssh-missing') {
+        toast('error', issueSummary(issue, forge?.host))
+      } else if (issue && forge) {
+        setAccess({ issue, retry: () => void runRef.current(label, action) })
+      } else {
+        toast('error', message)
+      }
       return undefined
     } finally {
       // The spinner stays until the list is fresh, so nothing can be clicked on stale rows.
@@ -118,6 +143,8 @@ export function RepoProvider({ repo, onClose, children }: { repo: string; onClos
       setBusy(null)
     }
   }, [reload, toast])
+  const runRef = useRef(run)
+  runRef.current = run
 
   useEffect(() => {
     void reload().catch((error: Error) => toast('error', error.message))
@@ -150,7 +177,8 @@ export function RepoProvider({ repo, onClose, children }: { repo: string; onClos
 
   const value: RepoContextValue = {
     repo, client, snapshot, commits, hasMore, loadMore, reload, draft, setDraft, draftCount,
-    view, setView, selected, setSelected, busy, run, toast, toasts, dismissToast, closeRepo: onClose
+    view, setView, selected, setSelected, busy, run, toast, toasts, dismissToast, closeRepo: onClose,
+    access, showAccess: setAccess
   }
   return <RepoContext.Provider value={value}>{children}</RepoContext.Provider>
 }

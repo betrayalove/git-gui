@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type { BlobContent, Commit, ConflictResolution, PushPreview, RenameBranchResult } from '../shared/types'
 import { git, gitLine, revParse, runGit } from './git'
 import { readCommits, readRefs, readRemotes } from './read'
+import { sshCommandFor } from './ssh'
 
 export async function validateBranchName(cwd: string, name: string): Promise<void> {
   const { code } = await runGit(cwd, ['check-ref-format', '--branch', name], { okCodes: [1, 128] })
@@ -238,10 +239,37 @@ export async function removeRemote(cwd: string, name: string): Promise<void> {
   await git(cwd, ['remote', 'remove', '--', name])
 }
 
-export async function cloneRepository(url: string, parentDir: string, directory: string): Promise<string> {
+export async function cloneRepository(url: string, parentDir: string, directory: string, keyPath?: string): Promise<string> {
+  const keyConfig = keyPath ? ['-c', `core.sshCommand=${sshCommandFor(keyPath)}`] : []
   // Excludes transports such as ext::, which run commands named in the URL.
-  await git(parentDir, ['clone', '--', url, directory], { env: { GIT_ALLOW_PROTOCOL: 'https:http:ssh:git:file' } })
+  await git(parentDir, ['clone', ...keyConfig, '--', url, directory], { env: { GIT_ALLOW_PROTOCOL: 'https:http:ssh:git:file' } })
   return gitLine(`${parentDir}/${directory}`, ['rev-parse', '--show-toplevel'])
+}
+
+export async function setRemoteUrl(cwd: string, name: string, url: string): Promise<void> {
+  await git(cwd, ['remote', 'set-url', '--', name, url])
+}
+
+export interface CommitIdentity {
+  name: string
+  email: string
+}
+
+/** Who new commits will be from. The SSH key plays no part in this. */
+export async function readIdentity(cwd: string): Promise<CommitIdentity> {
+  const value = async (key: string): Promise<string> =>
+    (await runGit(cwd, ['config', '--get', key], { okCodes: [1] })).stdout.toString('utf8').trim()
+  const [name, email] = await Promise.all([value('user.name'), value('user.email')])
+  return { name, email }
+}
+
+/** Applies to this repository only. */
+export async function setIdentity(cwd: string, identity: CommitIdentity): Promise<void> {
+  const name = identity.name.trim()
+  const email = identity.email.trim()
+  if (!name || !email || /[<>\n]/.test(name + email)) throw new Error('Некорректное имя или email')
+  await git(cwd, ['config', '--local', 'user.name', name])
+  await git(cwd, ['config', '--local', 'user.email', email])
 }
 
 export async function initRepository(path: string): Promise<void> {

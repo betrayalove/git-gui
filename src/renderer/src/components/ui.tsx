@@ -29,6 +29,7 @@ const paths: Record<string, ReactNode> = {
   merge: <><circle cx="7" cy="5.5" r="2.2" /><circle cx="7" cy="18.5" r="2.2" /><circle cx="17" cy="14" r="2.2" /><path d="M7 7.7v8.6M7 8c0 3.5 3 6 7.8 6" /></>,
   gear: <><circle cx="12" cy="12" r="3" /><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8" /></>,
   external: <><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 14v6H4V6h6" /></>,
+  key: <><circle cx="8" cy="15.5" r="4.5" /><path d="M11.2 12.3L20 3.5M16 7.5l3 3M13.5 10l2 2" /></>,
   users: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.5-4 3-6 6.5-6s6 2 6.5 6M16 4.8a3.5 3.5 0 0 1 0 6.4M18.5 14.5c1.8.9 2.8 2.7 3 5.5" /></>
 }
 
@@ -53,21 +54,25 @@ export function Avatar({ name, email, size = 22 }: { name: string; email: string
   )
 }
 
-export function Modal({ title, onClose, children, footer, wide, extraWide }: {
+export function Modal({ title, onClose, children, footer, wide, extraWide, topmost }: {
   title: string
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
   wide?: boolean
   extraWide?: boolean
+  /** Shown over another dialog: Escape closes only this one. */
+  topmost?: boolean
 }): ReactNode {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      if (topmost) event.stopPropagation()
+      onClose()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    window.addEventListener('keydown', onKey, Boolean(topmost))
+    return () => window.removeEventListener('keydown', onKey, Boolean(topmost))
+  }, [onClose, topmost])
   return (
     <div className="modal-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <div className={`modal ${wide ? 'modal-wide' : ''} ${extraWide ? 'modal-xl' : ''}`} role="dialog" aria-modal="true" aria-label={title}>

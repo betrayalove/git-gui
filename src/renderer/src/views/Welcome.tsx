@@ -1,5 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import type { AccessIssue } from '../../../shared/access'
 import { appApi, platform } from '../api'
+import { classifyAccessError, issueSummary } from '../../../shared/access'
+import { parseRemoteUrl } from '../../../shared/remote-url'
+import { AccessDialog } from '../components/AccessDialog'
 import { Icon, Modal } from '../components/ui'
 import { SettingsDialog } from './SettingsDialog'
 
@@ -9,16 +13,35 @@ function CloneDialog({ onClose, onOpen }: { onClose: () => void; onOpen: (repo: 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const directory = url.trim().replace(/\/+$/, '').split(/[/:]/).at(-1)?.replace(/\.git$/, '') ?? ''
-  const submit = async (): Promise<void> => {
+  const [access, setAccess] = useState<AccessIssue | null>(null)
+  const submit = async (overrideUrl?: string, keyPath?: string): Promise<void> => {
     if (!parent) return
     setBusy(true)
     setError(null)
     try {
-      onOpen(await appApi.cloneRepository(url.trim(), parent, directory))
+      onOpen(await appApi.cloneRepository(overrideUrl ?? url.trim(), parent, directory, keyPath))
     } catch (reason) {
-      setError((reason as Error).message)
+      const message = (reason as Error).message
+      const issue = classifyAccessError(message)
+      const host = parseRemoteUrl(url.trim())?.host
+      if (issue && issue !== 'offline' && issue !== 'ssh-missing' && host) setAccess(issue)
+      else setError(issue ? issueSummary(issue, host) : message)
       setBusy(false)
     }
+  }
+  if (access) {
+    return (
+      <AccessDialog
+        url={url.trim()}
+        issue={access}
+        onClose={() => setAccess(null)}
+        onRetry={(result) => {
+          setAccess(null)
+          if (result?.url) setUrl(result.url)
+          void submit(result?.url ?? undefined, result?.keyPath ?? undefined)
+        }}
+      />
+    )
   }
   return (
     <Modal

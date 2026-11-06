@@ -16,5 +16,15 @@ contextBridge.exposeInMainWorld('chronicle', {
     const handler = (_event: unknown, repo: string): void => listener(repo)
     ipcRenderer.on('chronicle:changed', handler)
     return () => ipcRenderer.removeListener('chronicle:changed', handler)
+  },
+  onPrompt: (listener: (prompt: unknown) => void) => {
+    const handler = (_event: unknown, prompt: unknown): void => listener(prompt)
+    ipcRenderer.on('chronicle:prompt', handler)
+    return () => ipcRenderer.removeListener('chronicle:prompt', handler)
+  },
+  onPromptClosed: (listener: (id: string) => void) => {
+    const handler = (_event: unknown, id: string): void => listener(id)
+    ipcRenderer.on('chronicle:prompt-closed', handler)
+    return () => ipcRenderer.removeListener('chronicle:prompt-closed', handler)
   }
 })

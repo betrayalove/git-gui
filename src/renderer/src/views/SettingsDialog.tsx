@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { UpdateInfo } from '../../../shared/types'
 import { appApi } from '../api'
+import { AccessDialog } from '../components/AccessDialog'
 import { Icon, Modal } from '../components/ui'
 
 export function SettingsDialog({ onClose }: { onClose: () => void }): ReactNode {
@@ -9,10 +10,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): ReactNode 
   const [autostart, setAutostart] = useState<{ available: boolean; enabled: boolean } | null>(null)
   const [autoUpdates, setAutoUpdates] = useState(true)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
+  const [access, setAccess] = useState(false)
+  const [saved, setSaved] = useState<{ available: boolean; count: number } | null>(null)
 
   useEffect(() => {
     void appApi.autostart().then(setAutostart)
     void appApi.updateChecksEnabled().then(setAutoUpdates)
+    void appApi.savedPassphrases().then(setSaved)
   }, [])
 
   const attempt = async (action: () => Promise<unknown>): Promise<void> => {
@@ -26,9 +30,23 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): ReactNode 
       setBusy(false)
     }
   }
+  if (access) return <AccessDialog onClose={() => setAccess(false)} />
   return (
     <Modal title="Настройки" onClose={onClose} wide>
       {error && <div className="banner danger"><Icon name="warning" />{error}</div>}
+      <section className="settings-section">
+        <h3>Доступ к серверам</h3>
+        <p className="hint settings-hint">Приложение работает с сервером через git и SSH-ключи этого компьютера. Вход в аккаунт не нужен.</p>
+        <div className="inline-actions">
+          <button className="btn" onClick={() => setAccess(true)}><Icon name="key" size={14} />Настроить SSH-ключ</button>
+          {saved && saved.count > 0 && (
+            <button className="btn btn-ghost" disabled={busy} onClick={() => void attempt(async () => {
+              await appApi.forgetPassphrases()
+              setSaved(await appApi.savedPassphrases())
+            })}>Забыть сохранённые пароли ключей: {saved.count}</button>
+          )}
+        </div>
+      </section>
       <section className="settings-section">
         <h3>Запуск</h3>
         <label className="check">

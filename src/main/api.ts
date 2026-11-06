@@ -3,6 +3,9 @@ import * as ops from '../core/ops'
 import * as read from '../core/read'
 import * as rewrite from '../core/rewrite'
 import * as schedule from '../core/schedule'
+import * as ssh from '../core/ssh'
+import { withoutPrompts } from '../core/git'
+import type { AccessPrompt, PromptReply, SshTarget } from '../shared/access'
 import type { ForgeContext, UpdateInfo, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
 
 export interface RepoSnapshot {
@@ -71,6 +74,15 @@ export const api = {
   renameBranch: ops.renameBranch,
   renameRemoteBranch: ops.renameRemoteBranch,
   deleteRemoteBranch: ops.deleteRemoteBranch,
+  setRemoteUrl: ops.setRemoteUrl,
+  readIdentity: ops.readIdentity,
+  setIdentity: ops.setIdentity,
+
+  repoKeyPath: ssh.repoKeyPath,
+  useKeyForRepo: ssh.useKeyForRepo,
+  clearRepoKey: ssh.clearRepoKey,
+  /** Whether the server would answer with nobody at the computer, as during a timed publish. */
+  checkUnattended: (repo: string, remote: string) => withoutPrompts(() => ssh.checkRemote(repo, remote)),
 
   previewRewrite: rewrite.previewRewrite,
   applyRewrite: rewrite.applyRewrite,
@@ -102,10 +114,19 @@ export interface AppApi {
   openRepository(path: string): Promise<string>
   forgetRepository(path: string): Promise<void>
   pickFolder(): Promise<string | null>
-  cloneRepository(url: string, parent: string, directory: string): Promise<string>
+  cloneRepository(url: string, parent: string, directory: string, keyPath?: string): Promise<string>
   initRepository(path: string): Promise<string>
   copyText(text: string): Promise<void>
   openExternal(url: string): Promise<void>
+  sshListKeys(host?: string): Promise<ssh.SshKey[]>
+  sshProbeHost(target: SshTarget): Promise<ssh.HostProbe>
+  sshCheckKey(key: ssh.SshKey, target: SshTarget, interactive?: boolean): Promise<ssh.KeyStatus>
+  sshDerivePublicKey(path: string): Promise<void>
+  sshCreateKey(passphrase: string, remember: boolean): Promise<string>
+  sshCheckRemote(repo: string | null, url: string, keyPath?: string): Promise<ssh.RemoteCheck>
+  answerPrompt(id: string, reply: PromptReply | null): Promise<void>
+  savedPassphrases(): Promise<{ available: boolean; count: number }>
+  forgetPassphrases(): Promise<void>
   autostart(): Promise<{ available: boolean; enabled: boolean }>
   setAutostart(enabled: boolean): Promise<void>
   checkForUpdates(): Promise<UpdateInfo>
@@ -118,4 +139,6 @@ export interface ChronicleBridge {
   call(method: string, ...args: unknown[]): Promise<unknown>
   app(method: string, ...args: unknown[]): Promise<unknown>
   onChanged(listener: (repo: string) => void): () => void
+  onPrompt(listener: (prompt: AccessPrompt) => void): () => void
+  onPromptClosed(listener: (id: string) => void): () => void
 }

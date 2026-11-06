@@ -580,3 +580,29 @@ h1, h2, h3, h4, p { margin: 0; }
   border-radius: 9px; background: var(--surface-3); border: 1px solid var(--border); box-shadow: var(--shadow); font-size: 12.5px;
 }
 .update-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* Access */
+.settings-hint { margin: 0 0 8px; }
+.access-progress { display: flex; align-items: center; gap: 9px; padding: 12px 0; color: var(--text-2); }
+.access-actions { margin-top: 12px; }
+.access-action { margin: 0 0 8px; }
+.access-steps { margin: 12px 0 0; padding-left: 20px; color: var(--text-2); display: flex; flex-direction: column; gap: 5px; }
+.access-success { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; background: var(--add-soft); }
+.access-success > svg { color: var(--add); flex: none; }
+.access-success > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.access-success b { font-weight: 600; }
+.access-success .muted { font-size: 12px; }
+.key-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.key-row { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
+.key-row:hover { background: var(--surface-2); }
+.key-row.active { border-color: var(--accent); background: var(--accent-soft); }
+.key-row input { margin: 0; accent-color: var(--accent); flex: none; }
+.key-row > svg { color: var(--text-3); flex: none; }
+.key-name { flex: 1; min-width: 0; font-weight: 500; }
+.key-row .muted { font-size: 11.5px; flex: none; }
+.key-row .pill { flex: none; }
+.key-box { padding: 9px 11px; margin-bottom: 4px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); max-height: 72px; overflow-y: auto; user-select: text; }
+.key-box code { font-size: 11.5px; word-break: break-all; color: var(--text-2); }
+.prompt-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.commit-author { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; padding: 2px 0; margin-bottom: 7px; color: var(--text-3); font-size: 11.5px; text-align: left; }
+.commit-author:hover { color: var(--text); }

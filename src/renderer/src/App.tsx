@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { buildPlan, EMPTY_DRAFT } from '../../shared/draft'
 import type { UpdateInfo } from '../../shared/types'
 import { appApi, platform } from './api'
+import { AccessDialog } from './components/AccessDialog'
 import { DialogProvider, PushDialog, ReviewDialog, useDialogs } from './components/dialogs'
+import { PromptHost } from './components/PromptHost'
 import { Sidebar } from './components/Sidebar'
 import { ContextMenu, Icon, type MenuItem } from './components/ui'
 import { plural } from './format'
@@ -116,7 +118,7 @@ function Toasts(): ReactNode {
 }
 
 function Workspace(): ReactNode {
-  const { view, snapshot, client, run } = useRepo()
+  const { view, snapshot, client, run, repo, access, showAccess, reload } = useRepo()
   const [search, setSearch] = useState('')
   const lastApplied = [...(snapshot?.journal ?? [])].reverse().find((entry) => entry.state === 'applied')
 
@@ -153,6 +155,16 @@ function Workspace(): ReactNode {
         </main>
       </div>
       <Toasts />
+      {access && snapshot?.forge && (
+        <AccessDialog
+          url={snapshot.forge.url}
+          repoPath={repo}
+          remote={snapshot.forge.remote}
+          issue={access.issue}
+          onClose={() => { showAccess(null); void reload() }}
+          onRetry={access.retry && (() => { showAccess(null); access.retry!() })}
+        />
+      )}
     </div>
   )
 }
@@ -191,6 +203,7 @@ export function App(): ReactNode {
         </RepoProvider>
       ) : <Welcome onOpen={setRepo} />}
       <UpdateNotice />
+      <PromptHost />
     </>
   )
 }

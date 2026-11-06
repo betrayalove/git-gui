@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { WorktreeConflict } from '../../../core/ops'
+import type { CommitIdentity, WorktreeConflict } from '../../../core/ops'
 import { buildFilePatch } from '../../../shared/patch'
 import type { ConflictResolution, DiffResult, FileDiff, FileState, StatusFile } from '../../../shared/types'
 import { ConflictEditor } from '../components/ConflictEditor'
 import { ConfirmDialog, useDialogs } from '../components/dialogs'
 import { DiffView } from '../components/DiffView'
-import { EmptyState, Icon } from '../components/ui'
+import { Avatar, EmptyState, Icon, Modal } from '../components/ui'
 import { useRepo } from '../store'
 
 const STATE_LETTER: Record<FileState, string> = {
@@ -98,6 +98,34 @@ function WorktreeConflictPane({ conflict, operation, onResolved }: {
   )
 }
 
+function IdentityDialog({ initial, onSaved }: { initial: CommitIdentity | null; onSaved: (identity: CommitIdentity) => void }): ReactNode {
+  const { client, run } = useRepo()
+  const { close } = useDialogs()
+  const [name, setName] = useState(initial?.name ?? '')
+  const [email, setEmail] = useState(initial?.email ?? '')
+  const save = (): void => {
+    close()
+    void run('Сохраняю автора', async () => {
+      await client.setIdentity({ name, email })
+      onSaved(await client.readIdentity())
+    })
+  }
+  return (
+    <Modal
+      title="Автор коммитов"
+      onClose={close}
+      footer={<>
+        <button className="btn btn-ghost" onClick={close}>Отмена</button>
+        <button className="btn btn-primary" disabled={!name.trim() || !email.trim()} onClick={save}>Сохранить</button>
+      </>}
+    >
+      <label className="field"><span>Имя</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label className="field"><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+      <p className="hint">Настройка действует только в этом репозитории. Имя и email попадут в новые коммиты, а SSH-ключ на них не влияет.</p>
+    </Modal>
+  )
+}
+
 export function ChangesView(): ReactNode {
   const { snapshot, client, run, toast } = useRepo()
   const { show } = useDialogs()
@@ -105,6 +133,11 @@ export function ChangesView(): ReactNode {
   const [diff, setDiff] = useState<DiffResult | null>(null)
   const [message, setMessage] = useState('')
   const [amend, setAmend] = useState(false)
+  const [identity, setIdentity] = useState<CommitIdentity | null>(null)
+  useEffect(() => {
+    void client.readIdentity().then(setIdentity).catch(() => {})
+  }, [client])
+  const editIdentity = (): void => show(<IdentityDialog initial={identity} onSaved={setIdentity} />)
   const status = snapshot?.status
   const files = status?.files ?? []
   const stagedFiles = files.filter((file) => file.staged)
@@ -264,6 +297,11 @@ export function ChangesView(): ReactNode {
           ))}
         </div>
         <div className="commit-box">
+          <button className="commit-author" title="Изменить для этого репозитория" onClick={editIdentity}>
+            {identity?.name && identity.email
+              ? <><Avatar name={identity.name} email={identity.email} size={16} /><span className="truncate">{identity.name} &lt;{identity.email}&gt;</span></>
+              : <span className="danger-text">Укажи автора коммитов</span>}
+          </button>
           <textarea
             rows={4}
             value={message}

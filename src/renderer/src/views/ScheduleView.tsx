@@ -1,3 +1,4 @@
+import { classifyAccessError, type AccessIssue } from '../../../shared/access'
 import type { ReactNode } from 'react'
 import type { ScheduledPublish } from '../../../shared/types'
 import { ConfirmDialog, useDialogs } from '../components/dialogs'
@@ -9,8 +10,14 @@ const STATE_TEXT: Record<ScheduledPublish['state'], string> = {
   pending: 'Ждёт', done: 'Опубликовано', failed: 'Ошибка', cancelled: 'Отменено'
 }
 
+/** A publish that ran into a refused connection stays pending and goes out once access works again. */
+function accessIssueOf(error: string): AccessIssue | null {
+  const issue = classifyAccessError(error)
+  return issue && issue !== 'offline' && issue !== 'protected' ? issue : null
+}
+
 export function ScheduleView(): ReactNode {
-  const { snapshot, client, run, toast } = useRepo()
+  const { snapshot, client, run, toast, showAccess } = useRepo()
   const { show } = useDialogs()
   const schedules = [...(snapshot?.schedules ?? [])].sort((a, b) => {
     if ((a.state === 'pending') !== (b.state === 'pending')) return a.state === 'pending' ? -1 : 1
@@ -41,6 +48,9 @@ export function ScheduleView(): ReactNode {
           </ul>
           {entry.error && <div className={`banner ${entry.state === 'failed' ? 'danger' : 'warn'}`}><Icon name="warning" />{entry.error}</div>}
           {entry.note && <div className="banner">{entry.note}</div>}
+          {entry.error && accessIssueOf(entry.error) && snapshot?.forge && (
+            <button className="btn btn-small access-action" onClick={() => showAccess({ issue: accessIssueOf(entry.error!)! })}><Icon name="key" size={13} />Настроить доступ</button>
+          )}
           <div className="detail-actions">
             {entry.state === 'pending' && (
               <button className="btn btn-primary btn-small" onClick={() => show(<ConfirmDialog

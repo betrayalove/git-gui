@@ -4,12 +4,17 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron'
-import { checkGitVersion, configureGit } from '../core/git'
+import { AskpassServer } from '../core/askpass'
+import { checkGitVersion, configureGit, withoutPrompts } from '../core/git'
+import { PromptBroker } from '../core/prompt-broker'
+import { checkKey, checkRemote, createKey, derivePublicKey, listKeys, probeHost, verifyPassphrase } from '../core/ssh'
+import { classifyAccessError, issueSummary, type AccessPrompt, type PromptReply } from '../shared/access'
 import { cloneRepository, initRepository } from '../core/ops'
 import { isRepository, repoRoot } from '../core/read'
 import { listSchedules, publishDue } from '../core/schedule'
 import { checkForUpdate } from '../core/updates'
 import { api, type AppApi, type ApiMethod } from './api'
+import { PassphraseStore } from './passphrases'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const statePath = (): string => join(app.getPath('userData'), 'state.json')
@@ -24,6 +29,12 @@ let recent: string[] = []
 const HIDDEN_FLAG = '--chronicle-hidden'
 let startedHidden = false
 let updateChecks = true
+const PROMPT_TIMEOUT_MS = 5 * 60_000
+const warnedAccess = new Set<string>()
+const openPrompts = new Map<string, (reply: PromptReply | null) => void>()
+let passphrases: PassphraseStore
+let askpass: AskpassServer
+let broker: PromptBroker
 
 async function loadState(): Promise<void> {
   try {
@@ -67,6 +78,34 @@ async function adoptLoginShellEnv(): Promise<void> {
   } catch {
     // The inherited environment still works for most setups.
   }
+}
+
+/** Shows a question from git or ssh. An unanswered one is cancelled, so a command never hangs for good. */
+function askPerson(prompt: AccessPrompt): Promise<PromptReply | null> {
+  if (!window) return Promise.resolve(null)
+  window.show()
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      openPrompts.delete(prompt.id)
+      window?.webContents.send('chronicle:prompt-closed', prompt.id)
+      resolve(null)
+    }, PROMPT_TIMEOUT_MS)
+    openPrompts.set(prompt.id, (reply) => {
+      clearTimeout(timer)
+      openPrompts.delete(prompt.id)
+      resolve(reply)
+    })
+    window!.webContents.send('chronicle:prompt', prompt)
+  })
+}
+
+async function startPrompts(): Promise<void> {
+  passphrases = new PassphraseStore(join(app.getPath('userData'), 'key-passwords.json'))
+  await passphrases.load()
+  askpass = new AskpassServer((request) => broker.handle(request))
+  broker = new PromptBroker(askPerson, passphrases, (path, value) => verifyPassphrase(path, value, askpass))
+  await askpass.start(join(app.getPath('userData'), 'askpass'))
+  configureGit({ promptEnv: () => askpass.env() })
 }
 
 function trayIcon(): Electron.NativeImage {
@@ -115,16 +154,25 @@ async function tick(): Promise<void> {
   for (const repo of openRepos) {
     let results: Awaited<ReturnType<typeof publishDue>> = []
     try {
-      results = await publishDue(repo)
+      results = await withoutPrompts(() => publishDue(repo))
     } catch (error) {
       console.error(`Publish failed for ${repo}:`, error)
     }
     for (const result of results) {
-      if (result.state === 'pending') continue
+      if (result.state === 'pending') {
+        // It stays pending and retries by itself, but someone has to fix the access, and only once needs telling.
+        const issue = result.error ? classifyAccessError(result.error) : null
+        if (issue && issue !== 'offline' && !warnedAccess.has(result.id) && Notification.isSupported()) {
+          warnedAccess.add(result.id)
+          new Notification({ title: `Публикация ждёт доступа: ${result.branch}`, body: issueSummary(issue) }).show()
+        }
+        continue
+      }
       if (Notification.isSupported()) {
+        const issue = result.error ? classifyAccessError(result.error) : null
         new Notification({
           title: result.state === 'done' ? `Опубликовано: ${result.branch}` : `Не удалось опубликовать: ${result.branch}`,
-          body: result.error ?? result.note ?? `Коммитов: ${result.commits.length}`
+          body: (issue && issueSummary(issue)) ?? result.error ?? result.note ?? `Коммитов: ${result.commits.length}`
         }).show()
       }
     }
@@ -192,7 +240,7 @@ const appHandlers: AppApi = {
     const result = await dialog.showOpenDialog(window!, { properties: ['openDirectory', 'createDirectory'] })
     return result.canceled ? null : result.filePaths[0]
   },
-  cloneRepository: async (url, parent, directory) => rememberRepo(await cloneRepository(url, parent, directory)),
+  cloneRepository: async (url, parent, directory, keyPath) => rememberRepo(await cloneRepository(url, parent, directory, keyPath)),
   initRepository: async (path) => {
     await initRepository(path)
     return rememberRepo(path)
@@ -201,6 +249,25 @@ const appHandlers: AppApi = {
   openExternal: async (url) => {
     if (!url.startsWith('https://')) throw new Error(`Адрес не открыт: ${url}`)
     await shell.openExternal(url)
+  },
+  sshListKeys: (host) => listKeys(host),
+  sshProbeHost: probeHost,
+  sshCheckKey: (key, target, interactive) => checkKey(key, target, interactive),
+  sshDerivePublicKey: derivePublicKey,
+  sshCreateKey: async (passphrase, remember) => {
+    const path = await createKey(passphrase, askpass)
+    if (passphrase) await broker.remember(path, passphrase, remember)
+    return path
+  },
+  sshCheckRemote: async (repo, url, keyPath) => {
+    if (repo !== null && !openRepos.has(repo)) throw new Error('Репозиторий не открыт')
+    return checkRemote(repo, url, keyPath)
+  },
+  answerPrompt: async (id, reply) => openPrompts.get(id)?.(reply),
+  savedPassphrases: async () => ({ available: passphrases.available(), count: passphrases.count() }),
+  forgetPassphrases: async () => {
+    broker.clearSession()
+    await passphrases.clear()
   },
   checkForUpdates: () => checkForUpdate(app.getVersion()),
   updateChecksEnabled: async () => updateChecks && app.isPackaged,
@@ -254,6 +321,7 @@ app.on('second-instance', showWindow)
 void app.whenReady().then(async () => {
   await adoptLoginShellEnv()
   await loadState()
+  await startPrompts()
   registerIpc()
   startedHidden = process.argv.includes(HIDDEN_FLAG) || (app.isPackaged && app.getLoginItemSettings().wasOpenedAtLogin)
   try {
@@ -268,6 +336,7 @@ void app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => { quitting = true })
+app.on('will-quit', () => void askpass?.stop())
 
 // A pending publish has to survive a closed window, so the app stays in the tray until it is done.
 app.on('window-all-closed', () => {

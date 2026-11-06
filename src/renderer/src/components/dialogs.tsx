@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { EMPTY_DRAFT } from '../../../shared/draft'
 import type { Commit, CommitEdit, ConflictResolution, DiffResult, PushPreview, SigningSetup, RewriteConflict, RewritePlan, RewritePreview } from '../../../shared/types'
+import { classifyAccessError, issueSummary, type AccessIssue } from '../../../shared/access'
 import { buildPatch } from '../../../shared/patch'
 import { branchSettingsUrl, newRequestUrl, requestLabel } from '../../../shared/remote-url'
 import { appApi } from '../api'
@@ -295,9 +296,9 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
 }
 
 export function PushDialog({ branch }: { branch: string }): ReactNode {
-  const { client, run, toast, snapshot } = useRepo()
+  const { client, run, toast, snapshot, showAccess } = useRepo()
   const forge = snapshot?.forge
-  const { close } = useDialogs()
+  const { close, show } = useDialogs()
   const [preview, setPreview] = useState<PushPreview | null>(null)
   const [tags, setTags] = useState<{ name: string; expected: string }[]>([])
   const [includeTags, setIncludeTags] = useState(true)
@@ -314,8 +315,19 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
           setTags(tagList)
         }
       })
-      .catch((reason: Error) => { if (!cancelled) setError(reason.message) })
+      .catch((reason: Error) => {
+        if (cancelled) return
+        const issue = classifyAccessError(reason.message)
+        if (issue && issue !== 'offline' && forge) {
+          close()
+          showAccess({ issue, retry: () => show(<PushDialog branch={branch} />) })
+        } else {
+          setError(issue ? issueSummary(issue, forge?.host) : reason.message)
+        }
+      })
     return () => { cancelled = true }
+    // Only a new branch or repository should repeat the check.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch, client])
 
   const send = async (): Promise<void> => {
@@ -510,8 +522,18 @@ export function RenameRemoteBranchDialog({ remote, name }: { remote: string; nam
 }
 
 export function ScheduleDialog({ branch, count }: { branch: string; count: number }): ReactNode {
-  const { client, run, toast, commits, snapshot, setView } = useRepo()
-  const { close } = useDialogs()
+  const { client, run, toast, commits, snapshot, setView, showAccess } = useRepo()
+  const { close, show } = useDialogs()
+  const [unattended, setUnattended] = useState<AccessIssue | null>(null)
+  const remote = snapshot?.forge?.remote
+  useEffect(() => {
+    if (!remote) return
+    let cancelled = false
+    client.checkUnattended(remote)
+      .then((result) => { if (!cancelled && !result.ok && result.issue !== 'offline') setUnattended(result.issue) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [client, remote])
   const [at, setAt] = useState(() => dateToLocalInput(new Date(Date.now() + 3600000)))
   const [dateMode, setDateMode] = useState<'keep' | 'publish-time'>('keep')
   const ref = snapshot?.refs.find((item) => item.kind === 'branch' && item.name === branch)
@@ -545,6 +567,18 @@ export function ScheduleDialog({ branch, count }: { branch: string; count: numbe
       </>}
     >
       <p className="prose">Эти коммиты уйдут из ветки <b>{branch}</b> локально и на сервере, а в указанное время вернутся.</p>
+      {unattended && (
+        <div className="banner warn">
+          <Icon name="warning" />
+          <div>
+            Без тебя сервер не примет публикацию: сейчас он отвечает только после ввода пароля или вообще не даёт доступа. Для ключа с паролем поставь галочку «Запомнить» при вводе пароля.
+            <button className="btn btn-small" onClick={() => {
+              close()
+              showAccess({ issue: unattended, retry: () => show(<ScheduleDialog branch={branch} count={count} />) })
+            }}><Icon name="key" size={13} />Настроить доступ</button>
+          </div>
+        </div>
+      )}
       <ul className="commit-list">{held.map((commit) => <CommitLine key={commit.sha} commit={commit} />)}</ul>
       <label className="field">
         <span>Когда опубликовать</span>
