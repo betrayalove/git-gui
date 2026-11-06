@@ -133,10 +133,13 @@ describe('Chronicle with a GitLab server', () => {
     await page.getByRole('button', { name: 'Push' }).click()
     await page.getByText('force-push на неё запрещён').waitFor()
     await shot('23-protected')
-    await page.getByRole('button', { name: 'Отмена' }).click()
-    await git(repo, ['fetch', '-q', 'origin'])
-    await git(repo, ['reset', '-q', '--hard', 'origin/main'])
-    await page.waitForTimeout(5500)
+    await page.getByText('только на время этой отправки').click()
+    await page.getByText('Понимаю').click()
+    await page.getByRole('button', { name: 'Перезаписать на сервере' }).click()
+    await expect.poll(() => gitLine(bare, ['log', '-1', '--format=%s', 'main'])).toBe('Начало, исправлено')
+    await expect.poll(() => state.protections.main.allowForcePush).toBe(false)
+    expect(state.log.filter((line) => line.startsWith('PATCH')).length).toBe(2)
+    await settled()
   })
 
   it('renames the default branch: requests, protection and default all move', async () => {

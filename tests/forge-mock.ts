@@ -21,6 +21,7 @@ export interface MockState {
   log: string[]
   renameDelayMs?: number
   redirectTo?: string
+  failProtectionRestore?: boolean
 }
 
 function send(response: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
@@ -159,6 +160,13 @@ async function gitlab(
     if (method === 'DELETE') {
       delete state.protections[name]
       send(response, 204, null)
+    } else if (method === 'PATCH') {
+      if (state.failProtectionRestore && body.allow_force_push === false) {
+        send(response, 500, { message: 'Internal error' })
+        return
+      }
+      state.protections[name].allowForcePush = Boolean(body.allow_force_push)
+      send(response, 200, { name })
     } else if (state.protections[name]) {
       send(response, 200, {
         name, allow_force_push: state.protections[name].allowForcePush,

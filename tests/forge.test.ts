@@ -2,7 +2,7 @@ import type { Server } from 'node:http'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   apiUrlFor, configureForge, fetchUsername, forgeBranchInfo, forgeContext, forgeCreateRequest, forgeFetch, forgeListRequests,
-  forgeRenameBranch, forgeRenamePreview, forgeSetDefaultBranch, parseRemoteUrl
+  forcePushWithTemporaryAccess, forgeRenameBranch, forgeRenamePreview, forgeSetDefaultBranch, parseRemoteUrl
 } from '../src/core/forge'
 import { credentialEnv, git, gitLine } from '../src/core/git'
 import { readRefs, readRemotes } from '../src/core/read'
@@ -235,5 +235,43 @@ describe('GitLab', () => {
     await expect(forgeRenameBranch(dir, { oldName: 'feature', newName: 'renamed' })).rejects.toThrow('уже есть')
     expect(state.log.some((line) => line.startsWith('DELETE'))).toBe(false)
     expect(await gitLine(bare, ['rev-parse', '--verify', 'feature'])).toBeTruthy()
+  })
+})
+
+describe('temporary force-push access', () => {
+  async function diverged(): Promise<{ dir: string; bare: string; state: MockState; serverSha: string }> {
+    const context = await setup('gitlab', { protections: { main: { allowForcePush: false } } })
+    const serverSha = await head(context.bare, 'main')
+    await git(context.dir, ['commit', '--amend', '-q', '-m', 'rewritten'])
+    return { ...context, serverSha }
+  }
+
+  it('lifts the protection for one push and puts it back', async () => {
+    const { dir, bare, state, serverSha } = await diverged()
+    await forcePushWithTemporaryAccess(dir, { branch: 'main', expectedRemoteSha: serverSha }, 'main')
+    expect(await head(bare, 'main')).toBe(await head(dir))
+    expect(state.protections.main.allowForcePush).toBe(false)
+    const patches = state.log.filter((line) => line.startsWith('PATCH'))
+    expect(patches.length).toBe(2)
+  })
+
+  it('puts the protection back when the push fails', async () => {
+    const { dir, bare, state, serverSha } = await diverged()
+    await expect(forcePushWithTemporaryAccess(dir, { branch: 'main', expectedRemoteSha: '0'.repeat(40) }, 'main')).rejects.toThrow()
+    expect(state.protections.main.allowForcePush).toBe(false)
+    expect(await head(bare, 'main')).toBe(serverSha)
+  })
+
+  it('says so loudly when the protection could not be restored', async () => {
+    const { dir, state, serverSha } = await diverged()
+    state.failProtectionRestore = true
+    await expect(forcePushWithTemporaryAccess(dir, { branch: 'main', expectedRemoteSha: serverSha }, 'main')).rejects.toThrow('вернуть не удалось')
+  })
+
+  it('does not touch protection settings on GitHub', async () => {
+    const context = await setup('github', { protections: { main: { allowForcePush: false } } })
+    const serverSha = await head(context.bare, 'main')
+    await expect(forcePushWithTemporaryAccess(context.dir, { branch: 'main', expectedRemoteSha: serverSha }, 'main')).rejects.toThrow('не поддерживает')
+    expect(context.state.log.some((line) => !line.startsWith('GET'))).toBe(false)
   })
 })

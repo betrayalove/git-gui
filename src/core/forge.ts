@@ -9,7 +9,7 @@ import type {
   ForgeRequest
 } from '../shared/types'
 import { git, gitLine, runGit } from './git'
-import { lsRemoteBranch, validateBranchName } from './ops'
+import { forcePush, lsRemoteBranch, validateBranchName, type ForcePushRequest } from './ops'
 import { readRefs, readRemotes } from './read'
 
 export interface ResolvedAccount {
@@ -214,6 +214,8 @@ abstract class ForgeClient {
   abstract createRequest(request: NewForgeRequest): Promise<ForgeRequest>
   abstract renamePreview(branch: string): Promise<ForgeRenamePreview>
   abstract renameBranch(oldName: string, newName: string, sha: string): Promise<ForgeRenameResult>
+  /** Null when this forge has no safe way to change this one setting. */
+  abstract setForcePushAllowed(branch: string, allowed: boolean): Promise<void> | null
 }
 
 export interface NewForgeRequest {
@@ -286,6 +288,11 @@ class GitHubClient extends ForgeClient {
     }
   }
 
+  /** GitHub takes the whole protection object at once, so one wrong field could weaken it. */
+  setForcePushAllowed(): null {
+    return null
+  }
+
   async renameBranch(oldName: string, newName: string): Promise<ForgeRenameResult> {
     const moved = (await this.renamePreview(oldName)).following.length
     await this.call(`${this.base}/branches/${encodeURIComponent(oldName)}/rename`, { method: 'POST', body: { new_name: newName } })
@@ -354,6 +361,13 @@ class GitLabClient extends ForgeClient {
       stranded: requests.filter((request) => request.sourceBranch === branch),
       note: 'В GitLab нет переименования веток, поэтому создаётся новая ветка, а настройки переносятся на неё. Старая удаляется в конце, если от неё не осталось Merge Request.'
     }
+  }
+
+  async setForcePushAllowed(branch: string, allowed: boolean): Promise<void> {
+    await this.call(`${this.base}/protected_branches/${encodeURIComponent(branch)}`, {
+      method: 'PATCH',
+      body: { allow_force_push: allowed }
+    })
   }
 
   /** GitLab has no rename, so it is done in steps. The old branch goes last, and only when nothing needs it. */
@@ -458,6 +472,39 @@ export async function forgeSetDefaultBranch(cwd: string, branch: string, remote?
   const { client, remote: name } = await clientFor(cwd, remote)
   await client.setDefaultBranch(branch)
   await git(cwd, ['remote', 'set-head', '--', name, branch])
+}
+
+/**
+ * Force-pushes to a protected branch by allowing it just for this push. The protection is put
+ * back whether the push worked or not, and a failure to put it back is reported, never hidden.
+ */
+export async function forcePushWithTemporaryAccess(
+  cwd: string,
+  request: ForcePushRequest,
+  serverBranch: string
+): Promise<{ restored: boolean }> {
+  const { client, remote } = await clientFor(cwd, request.remote)
+  const lifted = client.setForcePushAllowed(serverBranch, true)
+  if (!lifted) throw new Error('Этот сервер не поддерживает временное снятие защиты')
+  await lifted
+  let pushError: Error | null = null
+  try {
+    await forcePush(cwd, { ...request, remote })
+  } catch (error) {
+    pushError = error as Error
+  }
+  let restored = true
+  try {
+    await client.setForcePushAllowed(serverBranch, false)
+  } catch {
+    restored = false
+  }
+  if (!restored) {
+    const outcome = pushError ? `Отправка не удалась: ${pushError.message}` : 'Отправка прошла.'
+    throw new Error(`${outcome} Защиту ветки ${serverBranch} вернуть не удалось: force-push на неё сейчас разрешён. Запрети его в настройках репозитория.`)
+  }
+  if (pushError) throw pushError
+  return { restored }
 }
 
 const RENAME_POLL_MS = 500

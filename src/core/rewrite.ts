@@ -11,6 +11,7 @@ import type {
   RewriteConflict,
   RewritePlan,
   RewritePreview,
+  SigningSetup,
   TodoItem
 } from '../shared/types'
 import { git, GitError, gitLine, isAncestor, runGit, spawnGit } from './git'
@@ -203,6 +204,64 @@ class ObjectBatch {
 }
 
 const WRITE_CONCURRENCY = 256
+
+function stripSignatureHeader(commit: Buffer): Buffer {
+  const text = commit.toString('latin1')
+  const headerEnd = text.indexOf('\n\n')
+  const kept = text.slice(0, headerEnd).split('\n').filter((line, index, lines) => {
+    if (line.startsWith('gpgsig')) return false
+    if (!line.startsWith(' ')) return true
+    let previous = index - 1
+    while (previous >= 0 && lines[previous].startsWith(' ')) previous--
+    return !lines[previous].startsWith('gpgsig')
+  })
+  return Buffer.from(`${kept.join('\n')}${text.slice(headerEnd)}`, 'latin1')
+}
+
+/**
+ * Signs through git, so it honours the user's gpg.format, gpg.program and user.signingKey.
+ * The result is compared byte for byte with the intended commit. If commit-tree could not
+ * reproduce it, for example because of a mergetag header, null is returned and nothing is used.
+ */
+async function signCommit(cwd: string, commit: RawCommit): Promise<string | null> {
+  const identity = (line: string): { name: string; email: string; date: string } | null => {
+    const match = /^(.*) <(.*)> (\d+ [+-]\d{4})$/s.exec(line)
+    if (!match) return null
+    const decode = (value: string): string => Buffer.from(value, 'latin1').toString('utf8')
+    return { name: decode(match[1]), email: decode(match[2]), date: `@${match[3]}` }
+  }
+  const author = identity(commit.author)
+  const committer = identity(commit.committer)
+  if (!author || !committer) return null
+  const args = commit.encoding ? ['-c', `i18n.commitEncoding=${commit.encoding}`] : []
+  args.push('commit-tree', '-S', commit.tree)
+  for (const parent of commit.parents) args.push('-p', parent)
+  let sha: string
+  try {
+    sha = await gitLine(cwd, args, {
+      input: Buffer.from(commit.message, 'latin1'),
+      env: {
+        GIT_AUTHOR_NAME: author.name,
+        GIT_AUTHOR_EMAIL: author.email,
+        GIT_AUTHOR_DATE: author.date,
+        GIT_COMMITTER_NAME: committer.name,
+        GIT_COMMITTER_EMAIL: committer.email,
+        GIT_COMMITTER_DATE: committer.date
+      }
+    })
+  } catch (error) {
+    throw new Error(`Не удалось подписать коммит: ${(error as Error).message}`)
+  }
+  const written = (await runGit(cwd, ['cat-file', 'commit', sha])).stdout
+  return stripSignatureHeader(written).equals(serializeCommit(commit)) ? sha : null
+}
+
+export async function signingSetup(cwd: string): Promise<SigningSetup> {
+  const read = async (key: string): Promise<string> =>
+    (await runGit(cwd, ['config', '--get', key], { okCodes: [1] })).stdout.toString('utf8').trim()
+  const key = await read('user.signingkey')
+  return { available: Boolean(key), format: (await read('gpg.format')) || 'openpgp', key }
+}
 
 /** One long-lived `git cat-file --batch`, for reading many objects one at a time. */
 class ObjectReader {
@@ -466,7 +525,11 @@ const EMPTY_TREE_INPUT = ''
  * Builds the rewritten history as unreferenced objects and reports what applying it would do.
  * It moves no refs, so calling it is always safe.
  */
-export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<RewritePreview> {
+export async function previewRewrite(
+  cwd: string,
+  plan: RewritePlan,
+  options: { sign?: boolean } = {}
+): Promise<RewritePreview> {
   const refs = (await readRefs(cwd)).filter((ref) => ref.kind !== 'remote')
   const conflicts: RewriteConflict[] = []
   const warnings: string[] = []
@@ -530,7 +593,8 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
     return known
   }
 
-  const write = (source: RawCommit, parents: string[], tree: string, edit?: CommitEdit): string => {
+  let unsignable = 0
+  const write = async (source: RawCommit, parents: string[], tree: string, edit?: CommitEdit): Promise<string> => {
     const next: RawCommit = { ...source, parents, tree, extraHeaders: [...source.extraHeaders] }
     applyEdit(next, edit)
     const unchanged =
@@ -540,6 +604,18 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
       next.committer === source.committer &&
       next.message === source.message
     if (unchanged) return source.sha
+    if (source.signed && options.sign) {
+      // A signature changes the SHA, so children must see the signed commit. Signing needs the
+      // parents on disk, which is why the batch is written first.
+      await treeBatch.flush()
+      await batch.flush()
+      const signed = await signCommit(cwd, next)
+      if (signed) {
+        treeOfNew.set(signed, tree)
+        return signed
+      }
+      unsignable++
+    }
     if (source.signed) signaturesLost.push(source.sha)
     const sha = batch.add(serializeCommit(next))
     treeOfNew.set(sha, tree)
@@ -578,7 +654,7 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
       const message = edit?.message !== undefined || group.messages.length === 1
         ? edit
         : { ...edit, message: Buffer.from(group.messages.join('\n\n'), 'latin1').toString('utf8') }
-      const sha = write(group.head, group.parent ? [group.parent] : [], group.tree, message)
+      const sha = await write(group.head, group.parent ? [group.parent] : [], group.tree, message)
       for (const member of group.members) mapping.set(member, sha)
       current = sha
       group = null
@@ -600,7 +676,7 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
             conflicts.push({ sha: source.sha, subject: subjectOf(source), files: [], reason: 'split' })
             return false
           }
-          current = write(source, current ? [current] : [], firstTree, { ...edits[item.sha], message: item.split.message })
+          current = await write(source, current ? [current] : [], firstTree, { ...edits[item.sha], message: item.split.message })
         }
         group = {
           head: source, parent: current, tree,
@@ -665,7 +741,7 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
       }
       tree = source.tree
     }
-    mapping.set(sha, write(source, newParents, tree, edits[sha]))
+    mapping.set(sha, await write(source, newParents, tree, edits[sha]))
   }
   } finally {
     reader?.close()
@@ -756,6 +832,7 @@ export async function previewRewrite(cwd: string, plan: RewritePlan): Promise<Re
   }
   const lost = [...new Set(signaturesLost)]
   if (lost.length) warnings.push(`Подпись снимется с коммитов: ${lost.length}`)
+  if (unsignable) warnings.push(`Не удалось подписать заново коммитов необычного формата: ${unsignable}`)
 
   const mappingRecord: Record<string, string | null> = {}
   let rewrittenCount = 0
@@ -904,7 +981,7 @@ export async function moveRefs(
 }
 
 export async function applyRewrite(cwd: string, plan: RewritePlan): Promise<{ entry: JournalEntry; preview: RewritePreview }> {
-  const preview = await previewRewrite(cwd, plan)
+  const preview = await previewRewrite(cwd, plan, { sign: plan.resign })
   if (preview.conflicts.length) throw new Error(`Конфликт в коммите ${preview.conflicts[0].sha.slice(0, 8)}: ${preview.conflicts[0].subject}`)
   if (preview.blockers.length) throw new Error(preview.blockers[0])
   if (!preview.refUpdates.length) throw new Error('План ничего не меняет')

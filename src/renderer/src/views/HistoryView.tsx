@@ -13,7 +13,8 @@ import { formatFull, formatRelative, shortSha } from '../format'
 import { useRepo } from '../store'
 
 const OVERSCAN = 12
-const MAX_LANES = 16
+const MAX_LANES = 12
+const MAX_CHIPS = 3
 
 const STATE_LABEL: Record<RowDraftState, string> = {
   edited: 'изменён',
@@ -28,7 +29,7 @@ function RefChip({ info }: { info: RefInfo }): ReactNode {
   const icon = info.kind === 'tag' ? 'tag' : info.kind === 'remote' ? 'cloud' : 'branch'
   return (
     <span className={`ref-chip ref-${info.kind} ${info.isHead ? 'ref-head' : ''}`} title={info.ref}>
-      <Icon name={icon} size={11} />{info.name}
+      <Icon name={icon} size={11} /><span className="truncate">{info.name}</span>
     </span>
   )
 }
@@ -69,8 +70,6 @@ export function HistoryView({ search }: { search: string }): ReactNode {
     )
   }, [display, query])
   const rows = useMemo(() => (query ? [] : layoutGraph(display).map((row) => clampRow(row, MAX_LANES))), [display, query])
-  const columns = useMemo(() => rows.reduce((max, row) => Math.max(max, row.width), 1), [rows])
-  const width = query ? 0 : graphWidth(columns)
 
   const refsBySha = useMemo(() => {
     const map = new Map<string, RefInfo[]>()
@@ -268,6 +267,10 @@ export function HistoryView({ search }: { search: string }): ReactNode {
 
   const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
   const last = Math.min(filtered.length, Math.ceil((scrollTop + viewport) / ROW_HEIGHT) + OVERSCAN)
+  // The graph takes only what the rows around the viewport need, so one busy stretch of history
+  // does not squeeze every commit message elsewhere.
+  const visibleColumns = rows.slice(first, last).reduce((max, row) => Math.max(max, row.width), 1)
+  const width = query ? 0 : graphWidth(visibleColumns)
   const indexBySha = query ? null : new Map(display.map((commit, index) => [commit.sha, index]))
 
   return (
@@ -326,7 +329,14 @@ export function HistoryView({ search }: { search: string }): ReactNode {
                 <span className="grip"><Icon name="grip" size={14} /></span>
                 {row && <GraphCell row={row} width={width} merge={commit.parents.length > 1} ghost={dropped} />}
                 <span className="col-subject">
-                  {refs.map((ref) => <RefChip key={ref.ref} info={ref} />)}
+                  {refs.length > 0 && (
+                    <span className="ref-chips">
+                      {refs.slice(0, MAX_CHIPS).map((ref) => <RefChip key={ref.ref} info={ref} />)}
+                      {refs.length > MAX_CHIPS && (
+                        <span className="ref-chip ref-more" title={refs.slice(MAX_CHIPS).map((ref) => ref.name).join(', ')}>+{refs.length - MAX_CHIPS}</span>
+                      )}
+                    </span>
+                  )}
                   <span className="subject truncate" title={commit.message}>{commit.subject}</span>
                   {commit.draftStates.map((state) => <span key={state} className={`state-pill state-${state}`}>{STATE_LABEL[state]}</span>)}
                 </span>

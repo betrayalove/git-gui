@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { buildPlan, EMPTY_DRAFT } from '../../shared/draft'
-import { platform } from './api'
+import type { UpdateInfo } from '../../shared/types'
+import { appApi, platform } from './api'
 import { DialogProvider, PushDialog, ReviewDialog, useDialogs } from './components/dialogs'
 import { Sidebar } from './components/Sidebar'
 import { ContextMenu, Icon, type MenuItem } from './components/ui'
@@ -158,15 +159,40 @@ function Workspace(): ReactNode {
   )
 }
 
+function UpdateNotice(): ReactNode {
+  const [update, setUpdate] = useState<UpdateInfo | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void appApi.updateChecksEnabled().then(async (enabled) => {
+      if (!enabled) return
+      const info = await appApi.checkForUpdates()
+      if (!cancelled && info.available) setUpdate(info)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+  if (!update?.url) return null
+  return (
+    <div className="update-notice" role="status">
+      <span>Вышла версия {update.latest}</span>
+      <button className="link" onClick={() => void appApi.openExternal(update.url!)}>Скачать</button>
+      <button className="icon-btn" aria-label="Скрыть" onClick={() => setUpdate(null)}><Icon name="close" size={13} /></button>
+    </div>
+  )
+}
+
 export function App(): ReactNode {
   const [repo, setRepo] = useState<string | null>(null)
   const close = useCallback(() => setRepo(null), [])
-  if (!repo) return <Welcome onOpen={setRepo} />
   return (
-    <RepoProvider key={repo} repo={repo} onClose={close}>
-      <DialogProvider>
-        <Workspace />
-      </DialogProvider>
-    </RepoProvider>
+    <>
+      {repo ? (
+        <RepoProvider key={repo} repo={repo} onClose={close}>
+          <DialogProvider>
+            <Workspace />
+          </DialogProvider>
+        </RepoProvider>
+      ) : <Welcome onOpen={setRepo} />}
+      <UpdateNotice />
+    </>
   )
 }

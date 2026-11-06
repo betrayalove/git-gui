@@ -134,6 +134,8 @@ export interface RewritePlan {
   removePaths?: string[]
   pruneEmpty?: boolean
   description?: string
+  /** On apply, sign again with the user's key the commits that would lose a signature. */
+  resign?: boolean
   /** Conflict answers by commit and path, from an earlier preview of this same plan. */
   resolutions?: Record<string, Record<string, ConflictResolution>>
 }
@@ -297,4 +299,17 @@ export interface ForgeRenameResult {
   oldBranchDeleted: boolean
   movedRequests: number
   warnings: string[]
+}
+
+export interface SigningSetup {
+  available: boolean
+  format: string
+  key: string
+}
+
+export interface UpdateInfo {
+  current: string
+  latest: string | null
+  available: boolean
+  url: string | null
 }

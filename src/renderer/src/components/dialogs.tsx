@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { EMPTY_DRAFT } from '../../../shared/draft'
-import type { Commit, CommitEdit, ConflictResolution, DiffResult, ForgeBranchInfo, ForgeKind, ForgeRenamePreview, ForgeRequest, PushPreview, RewriteConflict, RewritePlan, RewritePreview } from '../../../shared/types'
+import type { Commit, CommitEdit, ConflictResolution, DiffResult, ForgeBranchInfo, ForgeKind, ForgeRenamePreview, ForgeRequest, PushPreview, SigningSetup, RewriteConflict, RewritePlan, RewritePreview } from '../../../shared/types'
 import { buildPatch } from '../../../shared/patch'
 import { appApi } from '../api'
 import { dateToLocalInput, plural, shortSha } from '../format'
@@ -103,6 +103,8 @@ function CommitLine({ commit }: { commit: Commit }): ReactNode {
   )
 }
 
+const MAX_WARNINGS = 6
+
 function ConflictWalkthrough({ conflict, onDone, onBack }: {
   conflict: RewriteConflict
   onDone: (answers: Record<string, ConflictResolution>) => void
@@ -156,6 +158,12 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
   const { close, show } = useDialogs()
   const [resolutions, setResolutions] = useState<NonNullable<RewritePlan['resolutions']>>({})
   const plan = useMemo<RewritePlan>(() => ({ ...basePlan, resolutions }), [basePlan, resolutions])
+  const [signing, setSigning] = useState<SigningSetup | null>(null)
+  const [resign, setResign] = useState(false)
+
+  useEffect(() => {
+    void client.signingSetup().then(setSigning).catch(() => {})
+  }, [client])
   const [preview, setPreview] = useState<RewritePreview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
@@ -173,7 +181,7 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
   const apply = async (): Promise<void> => {
     setApplying(true)
     const result = await run('Применяю правки', async () => {
-      const applied = await client.applyRewrite(plan)
+      const applied = await client.applyRewrite({ ...plan, resign })
       // Every SHA a draft refers to may have just changed. Clearing it before the reload that
       // follows keeps that reload from mistaking this for a change made outside the app.
       setDraft(() => EMPTY_DRAFT)
@@ -253,7 +261,14 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
             </div>
           ))}
           {preview.blockers.map((text) => <div className="banner danger" key={text}><Icon name="warning" />{text}</div>)}
-          {preview.warnings.map((text) => <div className="banner warn" key={text}><Icon name="warning" />{text}</div>)}
+          {preview.warnings.slice(0, MAX_WARNINGS).map((text) => <div className="banner warn" key={text}><Icon name="warning" />{text}</div>)}
+          {preview.warnings.length > MAX_WARNINGS && <p className="hint">И ещё предупреждений: {preview.warnings.length - MAX_WARNINGS}</p>}
+          {preview.signaturesLost.length > 0 && signing?.available && (
+            <label className="check">
+              <input type="checkbox" checked={resign} onChange={(event) => setResign(event.target.checked)} />
+              <span>Подписать эти коммиты заново моим ключом ({signing.format}). Подпись станет твоей, даже если раньше коммит подписывал другой человек.</span>
+            </label>
+          )}
           {preview.refUpdates.length > 0 && (
             <table className="ref-table">
               <thead><tr><th>Ссылка</th><th>Было</th><th>Станет</th><th>Сервер</th></tr></thead>
@@ -288,6 +303,7 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
   const [understood, setUnderstood] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [branchInfo, setBranchInfo] = useState<ForgeBranchInfo | null>(null)
+  const [liftProtection, setLiftProtection] = useState(false)
   const [requests, setRequests] = useState<ForgeRequest[]>([])
 
   useEffect(() => {
@@ -321,7 +337,12 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
     if (!preview) return
     close()
     const done = await run('Отправляю на сервер', async () => {
-      if (preview.needsForce || tags.length) {
+      if (preview.needsForce && liftProtection) {
+        await client.forcePushWithTemporaryAccess(
+          { branch, expectedRemoteSha: preview.remoteSha, remote: preview.remote, tags: includeTags ? tags : [] },
+          preview.remoteBranch
+        )
+      } else if (preview.needsForce || tags.length) {
         await client.forcePush({
           branch,
           expectedRemoteSha: preview.remoteSha,
@@ -378,6 +399,12 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
               <div>
                 Ветка защищена, и force-push на неё запрещён, поэтому сервер, скорее всего, отклонит отправку. Отправка пройдёт, только если у тебя есть право обходить защиту.
                 <button className="btn btn-small" onClick={() => void appApi.openExternal(branchInfo.settingsUrl)}><Icon name="external" size={13} />Открыть настройки защиты</button>
+                {forge?.kind === 'gitlab' && (
+                  <label className="check">
+                    <input type="checkbox" checked={liftProtection} onChange={(event) => setLiftProtection(event.target.checked)} />
+                    <span>Разрешить force-push только на время этой отправки и сразу вернуть защиту</span>
+                  </label>
+                )}
               </div>
             </div>
           )}

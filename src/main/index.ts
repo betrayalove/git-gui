@@ -9,6 +9,7 @@ import { checkGitVersion, configureGit, credentialEnv } from '../core/git'
 import { cloneRepository, initRepository } from '../core/ops'
 import { isRepository, repoRoot } from '../core/read'
 import { listSchedules, publishDue } from '../core/schedule'
+import { checkForUpdate } from '../core/updates'
 import { AccountStore } from './accounts'
 import { api, type AppApi, type ApiMethod } from './api'
 
@@ -26,11 +27,13 @@ let accounts: AccountStore
 let shellEnv: NodeJS.ProcessEnv = process.env
 const HIDDEN_FLAG = '--chronicle-hidden'
 let startedHidden = false
+let updateChecks = true
 
 async function loadState(): Promise<void> {
   try {
-    const state = JSON.parse(await readFile(statePath(), 'utf8')) as { recent?: string[]; known?: string[] }
+    const state = JSON.parse(await readFile(statePath(), 'utf8')) as { recent?: string[]; known?: string[]; updateChecks?: boolean }
     recent = state.recent ?? []
+    updateChecks = state.updateChecks ?? true
     for (const repo of state.known ?? []) openRepos.add(repo)
   } catch {
     recent = []
@@ -41,7 +44,7 @@ async function loadState(): Promise<void> {
 async function saveState(): Promise<void> {
   await mkdir(app.getPath('userData'), { recursive: true })
   // `known` outlives the recent list, so a pending publish still runs after its repository scrolls off.
-  await writeFile(statePath(), JSON.stringify({ recent, known: [...openRepos] }, null, 2))
+  await writeFile(statePath(), JSON.stringify({ recent, known: [...openRepos], updateChecks }, null, 2))
 }
 
 async function rememberRepo(path: string): Promise<string> {
@@ -221,6 +224,12 @@ const appHandlers: AppApi = {
     const resolved = accounts.byId(id)
     if (!resolved) throw new Error('Аккаунт не найден')
     return listAccountRepos(resolved.account, resolved.token)
+  },
+  checkForUpdates: () => checkForUpdate(app.getVersion()),
+  updateChecksEnabled: async () => updateChecks && app.isPackaged,
+  setUpdateChecksEnabled: async (enabled) => {
+    updateChecks = enabled
+    await saveState()
   },
   autostart: async () => ({
     available: app.isPackaged,

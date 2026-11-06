@@ -1,12 +1,13 @@
-import { chmodSync, existsSync, readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
 import { commitDiff } from '../src/core/read'
 import { buildPatch } from '../src/shared/patch'
 import type { FileDiff, RewritePlan } from '../src/shared/types'
-import { applyRewrite, previewRewrite, purgeBackups, readJournal, redoEntry, undoEntry } from '../src/core/rewrite'
-import { addOrigin, commitFile, createRepo, head, log, mergeNoFf, resetClock, write } from './helpers'
+import { applyRewrite, previewRewrite, purgeBackups, readJournal, redoEntry, signingSetup, undoEntry } from '../src/core/rewrite'
+import { addOrigin, commitFile, createRepo, head, log, mergeNoFf, resetClock, tempDir, write } from './helpers'
 
 beforeEach(resetClock)
 
@@ -666,6 +667,75 @@ describe('removing paths from history', () => {
     await purgeBackups(dir)
     await expect(git(dir, ['cat-file', '-t', blob])).rejects.toThrow()
     expect(await readJournal(dir)).toEqual([])
+  })
+})
+
+describe('signing rewritten commits', () => {
+  const canSign = spawnSync('ssh-keygen', ['-?']).error === undefined
+
+  async function signedRepo(): Promise<{ dir: string; first: string; signed: string }> {
+    const dir = await createRepo()
+    const keyDir = tempDir()
+    const key = join(keyDir, 'key')
+    spawnSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', key, '-C', 'test'])
+    await git(dir, ['config', 'gpg.format', 'ssh'])
+    await git(dir, ['config', 'user.signingkey', key])
+    const allowed = join(keyDir, 'allowed')
+    writeFileSync(allowed, `* ${readFileSync(`${key}.pub`, 'utf8')}`)
+    await git(dir, ['config', 'gpg.ssh.allowedSignersFile', allowed])
+    const first = await commitFile(dir, 'a.txt', '1\n', 'first')
+    write(dir, 'b.txt', '2\n')
+    await git(dir, ['add', '.'])
+    await git(dir, ['commit', '-S', '-q', '-m', 'signed commit\n\nwith a body'], {
+      env: { GIT_AUTHOR_NAME: 'Ann Author', GIT_AUTHOR_EMAIL: 'ann@example.com', GIT_AUTHOR_DATE: '1700000500 +0300', GIT_COMMITTER_NAME: 'Лёва Коммиттер', GIT_COMMITTER_EMAIL: 'c@example.com', GIT_COMMITTER_DATE: '1700000600 -0500' }
+    })
+    const signed = await head(dir)
+    await commitFile(dir, 'c.txt', '3\n', 'after')
+    return { dir, first, signed }
+  }
+
+  it.skipIf(!canSign)('signs again only the commits that had a signature, keeping everything else', async () => {
+    const { dir, first, signed } = await signedRepo()
+    const metadata = await gitLine(dir, ['log', '-1', '--format=%an|%ae|%aI|%cn|%ce|%cI|%B', signed])
+    const preview = await previewRewrite(dir, { edits: { [first]: { message: 'renamed' } } })
+    expect(preview.signaturesLost).toEqual([signed])
+    const { preview: applied } = await applyRewrite(dir, { edits: { [first]: { message: 'renamed' } }, resign: true })
+    expect(applied.signaturesLost).toEqual([])
+    const middle = await head(dir, 'HEAD~1')
+    await git(dir, ['verify-commit', middle])
+    expect(await gitLine(dir, ['log', '-1', '--format=%an|%ae|%aI|%cn|%ce|%cI|%B', middle])).toBe(metadata)
+    expect(await git(dir, ['cat-file', 'commit', 'HEAD'])).not.toContain('gpgsig')
+    expect(await log(dir)).toEqual(['after', 'signed commit', 'renamed'])
+    await git(dir, ['fsck', '--strict', '--full', '--no-dangling'])
+  })
+
+  it.skipIf(!canSign)('does not run the signer during a preview', async () => {
+    const { dir, first } = await signedRepo()
+    await git(dir, ['config', 'gpg.ssh.program', '/nonexistent/signer'])
+    await expect(previewRewrite(dir, { edits: { [first]: { message: 'x' } }, resign: true })).resolves.toBeTruthy()
+    await expect(applyRewrite(dir, { edits: { [first]: { message: 'x' } }, resign: true })).rejects.toThrow('подписать')
+    expect(await log(dir)).toContain('first')
+  })
+
+  it.skipIf(!canSign)('falls back with a warning when a commit cannot be reproduced exactly', async () => {
+    const { dir, first, signed } = await signedRepo()
+    const raw = await git(dir, ['cat-file', 'commit', signed])
+    const withExtra = raw.replace('\n\n', '\nmergetag object abc\n type commit\n\n')
+    const odd = await gitLine(dir, ['hash-object', '-t', 'commit', '-w', '--stdin', '--literally'], { input: withExtra })
+    await git(dir, ['update-ref', 'refs/heads/main', odd])
+    const { preview } = await applyRewrite(dir, { edits: { [first]: { message: 'x' } }, resign: true })
+    expect(preview.warnings.join()).toContain('необычного формата')
+    expect(preview.signaturesLost).toEqual([odd])
+    expect(await git(dir, ['cat-file', 'commit', 'HEAD'])).toContain('mergetag')
+  })
+
+  it('reports whether signing is set up', async () => {
+    const dir = await createRepo()
+    await git(dir, ['config', 'user.signingkey', ''])
+    expect((await signingSetup(dir)).available).toBe(false)
+    await git(dir, ['config', 'user.signingkey', 'ABC123'])
+    await git(dir, ['config', 'gpg.format', 'ssh'])
+    expect(await signingSetup(dir)).toEqual({ available: true, format: 'ssh', key: 'ABC123' })
   })
 })
 

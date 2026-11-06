@@ -3,7 +3,7 @@ import * as ops from '../core/ops'
 import * as read from '../core/read'
 import * as rewrite from '../core/rewrite'
 import * as schedule from '../core/schedule'
-import type { ForgeAccount, ForgeContext, ForgeKind, ForgeRepoSummary, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
+import type { ForgeAccount, ForgeContext, ForgeKind, ForgeRepoSummary, UpdateInfo, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
 
 export interface RepoSnapshot {
   status: RepoStatus
@@ -78,6 +78,7 @@ export const api = {
   redoEntry: rewrite.redoEntry,
   purgeBackups: rewrite.purgeBackups,
   rewrittenTagsOnRemote: rewrite.rewrittenTagsOnRemote,
+  signingSetup: rewrite.signingSetup,
 
   forgeBranchInfo: forge.forgeBranchInfo,
   forgeListRequests: forge.forgeListRequests,
@@ -85,6 +86,7 @@ export const api = {
   forgeRenamePreview: forge.forgeRenamePreview,
   forgeRenameBranch: forge.forgeRenameBranch,
   forgeSetDefaultBranch: forge.forgeSetDefaultBranch,
+  forcePushWithTemporaryAccess: forge.forcePushWithTemporaryAccess,
 
   schedulePublish: schedule.schedulePublish,
   publishNow: (repo: string, id: string) => schedule.publishNow(repo, id),
@@ -119,6 +121,9 @@ export interface AppApi {
   accountRepos(id: string): Promise<ForgeRepoSummary[]>
   autostart(): Promise<{ available: boolean; enabled: boolean }>
   setAutostart(enabled: boolean): Promise<void>
+  checkForUpdates(): Promise<UpdateInfo>
+  updateChecksEnabled(): Promise<boolean>
+  setUpdateChecksEnabled(enabled: boolean): Promise<void>
 }
 
 export interface ChronicleBridge {

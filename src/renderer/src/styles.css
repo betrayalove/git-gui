@@ -321,17 +321,22 @@ h1, h2, h3, h4, p { margin: 0; }
 .commit-row[draggable='false'] .grip { visibility: hidden; }
 .graph-cell { flex: none; display: block; }
 .graph-cell path { fill: none; stroke-width: 1.8; stroke-linecap: round; }
-.subject { font-weight: 450; flex: 0 1 auto; }
+.subject { font-weight: 450; flex: 1 1 0; min-width: 90px; }
+.ref-chips { display: flex; gap: 4px; flex: 0 1 auto; min-width: 0; max-width: 58%; overflow: hidden; }
+.ref-chips .ref-chip { flex: 0 1 auto; min-width: 34px; }
+.ref-chips .ref-more { flex: none; min-width: 0; }
 
 .ref-chip {
   display: inline-flex; align-items: center; gap: 4px; height: 19px; padding: 0 6px; border-radius: 5px; flex: none;
-  max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  max-width: 180px; overflow: hidden; white-space: nowrap;
   font-size: 11px; font-weight: 500; background: var(--surface-3); color: var(--text-2);
 }
+.ref-chip svg { flex: none; }
 .ref-branch { background: var(--accent-soft); color: var(--accent); }
 .ref-head { background: var(--accent); color: var(--accent-text); font-weight: 600; }
 .ref-tag { background: var(--draft-soft); color: var(--draft); }
 
+.commit-row .state-pill + .state-pill { margin-left: -1px; }
 .state-pill {
   flex: none; height: 17px; padding: 0 6px; border-radius: 5px; display: inline-flex; align-items: center;
   font-size: 10.5px; font-weight: 600; background: var(--draft-soft); color: var(--draft);
@@ -583,3 +588,9 @@ h1, h2, h3, h4, p { margin: 0; }
 .request-main b { font-weight: 500; }
 .request-main .muted { font-size: 11.5px; }
 .request-branches { display: flex; align-items: center; gap: 5px; flex: none; font: 11px var(--mono); color: var(--text-2); max-width: 340px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+.update-notice {
+  position: fixed; left: 12px; bottom: 12px; z-index: 40; display: flex; align-items: center; gap: 9px; padding: 7px 8px 7px 12px;
+  border-radius: 9px; background: var(--surface-3); border: 1px solid var(--border); box-shadow: var(--shadow); font-size: 12.5px;
+}
+.update-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
