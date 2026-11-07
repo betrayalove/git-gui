@@ -37,6 +37,10 @@ export const api = {
   stashDiff: read.stashDiff,
   worktreeDiff: read.worktreeDiff,
   readBlob: read.readBlob,
+  searchChanges: read.searchChanges,
+  listFiles: read.listFiles,
+  fileHistory: read.fileHistory,
+  blameFile: read.blameFile,
 
   stageFiles: ops.stageFiles,
   stageAll: ops.stageAll,

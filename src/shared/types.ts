@@ -232,6 +232,36 @@ export interface RenameBranchResult {
   warnings: string[]
 }
 
+/** One version of a file in its history. The path can differ between versions after a rename. */
+export interface FileVersion {
+  commit: Commit
+  path: string
+  status: FileState
+}
+
+export interface BlameCommit {
+  sha: string
+  authorName: string
+  authorEmail: string
+  /** ISO date of the author. */
+  authorDate: string
+  summary: string
+}
+
+export interface BlameLine {
+  sha: string
+  /** Line number in this version of the file, from 1. */
+  line: number
+  text: string
+}
+
+export interface BlameResult {
+  lines: BlameLine[]
+  commits: Record<string, BlameCommit>
+  /** The file is binary or too big to show line by line. */
+  skipped?: 'binary' | 'too-large'
+}
+
 export interface BlobContent {
   text: string
   binary: boolean

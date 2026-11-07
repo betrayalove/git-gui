@@ -18,7 +18,7 @@ interface AccessRequest {
   retry?: () => void
 }
 
-export type View = 'history' | 'changes' | 'stash' | 'schedule' | 'journal'
+export type View = 'history' | 'changes' | 'files' | 'stash' | 'schedule' | 'journal'
 
 interface Toast {
   id: number
@@ -51,7 +51,20 @@ interface RepoContextValue {
   closeRepo: () => void
   access: AccessRequest | null
   showAccess: (request: AccessRequest | null) => void
+  search: string
+  setSearch: (value: string) => void
+  /** Search the messages, or the lines the commits changed. */
+  searchMode: SearchMode
+  setSearchMode: (mode: SearchMode) => void
+  /** Shows a commit in the history, scrolled into view. */
+  jumpTo: (sha: string) => void
+  /** A request to scroll the history to a commit. */
+  focus: { sha: string; at: number } | null
+  filePath: string | null
+  openFile: (path: string) => void
 }
+
+export type SearchMode = 'message' | 'content'
 
 const RepoContext = createContext<RepoContextValue | null>(null)
 
@@ -76,6 +89,20 @@ export function RepoProvider({ repo, onClose, children }: { repo: string; onClos
   const refsKey = useRef('')
   const [staleNotice, setStaleNotice] = useState(false)
   const [access, setAccess] = useState<AccessRequest | null>(null)
+  const [search, setSearch] = useState('')
+  const [searchMode, setSearchMode] = useState<SearchMode>('message')
+  const [focus, setFocus] = useState<{ sha: string; at: number } | null>(null)
+  const [filePath, setFilePath] = useState<string | null>(null)
+  const jumpTo = useCallback((sha: string) => {
+    setSearch('')
+    setView('history')
+    setSelected([sha])
+    setFocus({ sha, at: Date.now() })
+  }, [])
+  const openFile = useCallback((path: string) => {
+    setFilePath(path)
+    setView('files')
+  }, [])
   const forgeRef = useRef<RepoSnapshot['forge']>(null)
 
   const dismissToast = useCallback((id: number) => {
@@ -178,7 +205,7 @@ export function RepoProvider({ repo, onClose, children }: { repo: string; onClos
   const value: RepoContextValue = {
     repo, client, snapshot, commits, hasMore, loadMore, reload, draft, setDraft, draftCount,
     view, setView, selected, setSelected, busy, run, toast, toasts, dismissToast, closeRepo: onClose,
-    access, showAccess: setAccess
+    access, showAccess: setAccess, search, setSearch, searchMode, setSearchMode, jumpTo, focus, filePath, openFile
   }
   return <RepoContext.Provider value={value}>{children}</RepoContext.Provider>
 }

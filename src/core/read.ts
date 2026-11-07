@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type {
+  BlameCommit,
+  BlameResult,
   BlobContent,
   Commit,
   DiffHunk,
@@ -8,6 +10,7 @@ import type {
   DiffResult,
   FileDiff,
   FileState,
+  FileVersion,
   OperationInProgress,
   RefInfo,
   RemoteInfo,
@@ -64,6 +67,99 @@ export async function readLog(cwd: string, options: LogOptions = {}): Promise<Co
   args.push('--')
   if (options.path) args.push(options.path)
   return parseLog(await git(cwd, args))
+}
+
+const SEARCH_LIMIT = 1000
+
+/** Escapes text for the extended regular expressions git uses in -G. */
+function literalPattern(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Commits whose changes add or remove a line containing `text`, in any branch or tag. Case is
+ * ignored. The result holds SHAs only: the history list already has the commits.
+ */
+export async function searchChanges(cwd: string, options: { text: string; path?: string; limit?: number }): Promise<{ shas: string[]; limited: boolean }> {
+  const text = options.text.trim()
+  if (!text || !(await hasCommits(cwd))) return { shas: [], limited: false }
+  const limit = options.limit ?? SEARCH_LIMIT
+  const raw = await git(cwd, [
+    'log', '--format=%H', '--branches', '--tags', '--remotes', 'HEAD',
+    `-G${literalPattern(text)}`, '--regexp-ignore-case', `--max-count=${limit + 1}`,
+    '--', ...(options.path ? [options.path] : [])
+  ])
+  const shas = raw.split('\n').filter(Boolean)
+  return { shas: shas.slice(0, limit), limited: shas.length > limit }
+}
+
+/** Paths of all files in a commit, for picking one. */
+export async function listFiles(cwd: string, rev = 'HEAD'): Promise<string[]> {
+  if (!(await hasCommits(cwd))) return []
+  const raw = await git(cwd, ['ls-tree', '-r', '--name-only', '-z', rev])
+  return raw.split('\0').filter(Boolean)
+}
+
+const STATUS_LETTER: Record<string, FileState> = {
+  A: 'added', M: 'modified', D: 'deleted', R: 'renamed', C: 'copied', T: 'typechange'
+}
+
+/** Every commit that changed a file, following it through renames. Newest first. */
+export async function fileHistory(cwd: string, path: string, limit = 1000): Promise<FileVersion[]> {
+  if (!(await hasCommits(cwd))) return []
+  const raw = await git(cwd, [
+    'log', '--follow', '-M', `--max-count=${limit}`, `--format=${RS}${LOG_FORMAT}${RS}`, '--name-status', '-z', 'HEAD', '--', path
+  ])
+  // Each record is the commit, then its name-status entries, separated by the same marker.
+  const parts = raw.split(RS).slice(1)
+  const versions: FileVersion[] = []
+  for (let index = 0; index + 1 < parts.length; index += 2) {
+    const [commit] = parseLog(RS + parts[index])
+    const fields = parts[index + 1].split('\0').map((field) => field.replace(/^\n+/, '')).filter(Boolean)
+    const letter = fields[0]?.[0] ?? 'M'
+    const current = letter === 'R' || letter === 'C' ? fields[2] : fields[1]
+    versions.push({ commit, path: current ?? path, status: STATUS_LETTER[letter] ?? 'modified' })
+  }
+  return versions
+}
+
+const BLAME_MAX_BYTES = 4 * 1024 * 1024
+
+/** Who last changed each line of a file in `rev`. */
+export async function blameFile(cwd: string, path: string, rev = 'HEAD'): Promise<BlameResult> {
+  const object = `${rev}:${path}`
+  const size = Number(await gitLine(cwd, ['cat-file', '-s', object]))
+  if (size > BLAME_MAX_BYTES) return { lines: [], commits: {}, skipped: 'too-large' }
+  const sample = (await runGit(cwd, ['cat-file', 'blob', object])).stdout.subarray(0, 8000)
+  if (sample.includes(0)) return { lines: [], commits: {}, skipped: 'binary' }
+  const raw = await git(cwd, ['blame', '--porcelain', rev, '--', path])
+  const result: BlameResult = { lines: [], commits: {} }
+  let current: BlameCommit | null = null
+  let lineNumber = 0
+  const times = new Map<string, { time: number; zone: string }>()
+  for (const line of raw.split('\n')) {
+    if (line.startsWith('\t')) {
+      result.lines.push({ sha: current!.sha, line: lineNumber, text: line.slice(1) })
+      continue
+    }
+    const header = /^([0-9a-f]{40,64}) \d+ (\d+)/.exec(line)
+    if (header) {
+      lineNumber = Number(header[2])
+      current = result.commits[header[1]] ??= { sha: header[1], authorName: '', authorEmail: '', authorDate: '', summary: '' }
+      continue
+    }
+    if (!current) continue
+    const space = line.indexOf(' ')
+    const key = space === -1 ? line : line.slice(0, space)
+    const value = space === -1 ? '' : line.slice(space + 1)
+    if (key === 'author') current.authorName = value
+    else if (key === 'author-mail') current.authorEmail = value.replace(/^<|>$/g, '')
+    else if (key === 'summary') current.summary = value
+    else if (key === 'author-time') times.set(current.sha, { ...times.get(current.sha) ?? { zone: '+0000' }, time: Number(value) })
+    else if (key === 'author-tz') times.set(current.sha, { ...times.get(current.sha) ?? { time: 0 }, zone: value })
+  }
+  for (const [sha, { time }] of times) result.commits[sha].authorDate = new Date(time * 1000).toISOString()
+  return result
 }
 
 export async function readCommits(cwd: string, revs: string[]): Promise<Commit[]> {

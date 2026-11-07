@@ -247,6 +247,10 @@ h1, h2, h3, h4, p { margin: 0; }
 }
 .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--text); user-select: text; }
+.search-mode { flex: none; height: 20px; padding: 0 6px; margin-right: -5px; border-radius: 5px; font: 600 10.5px var(--mono); color: var(--text-3); }
+.search-mode:hover { color: var(--text); background: var(--surface-2); }
+.search-mode.active { color: var(--accent); background: var(--accent-soft); }
+.diff-line mark { background: var(--draft-soft); color: inherit; border-radius: 2px; box-shadow: 0 0 0 1px var(--draft); }
 
 /* Sidebar */
 
@@ -602,3 +606,43 @@ h1, h2, h3, h4, p { margin: 0; }
 .prompt-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .commit-author { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; padding: 2px 0; margin-bottom: 7px; color: var(--text-3); font-size: 11.5px; text-align: left; }
 .commit-author:hover { color: var(--text); }
+
+/* Files */
+.files { display: flex; min-height: 0; flex: 1; }
+.files-side { width: 300px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--border-soft); min-height: 0; }
+.files-search { width: auto; margin: 10px; }
+.file-pick { width: 100%; text-align: left; color: var(--text-2); }
+.file-pick > svg { flex: none; color: var(--text-3); }
+.file-pick .muted { font-size: 11px; }
+.files-more { padding: 6px 12px 12px; }
+.files-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.file-pane { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.file-pane .pane-head { border-bottom: 1px solid var(--border-soft); }
+.file-pane .pane-head h2 { min-width: 0; font-family: var(--mono); font-size: 13px; }
+.segmented.compact { margin: 0; flex: none; }
+.segmented.compact button { flex: none; padding: 0 12px; height: 26px; font-size: 12px; }
+.file-pane-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.file-history { display: flex; flex: 1; min-height: 0; }
+.file-versions { width: 320px; flex: none; overflow-y: auto; border-right: 1px solid var(--border-soft); }
+.file-version { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 12px; text-align: left; }
+.file-version:hover { background: var(--surface-2); }
+.file-version.active { background: var(--accent-soft); }
+.file-version code { flex: none; font-size: 11px; color: var(--text-3); }
+.file-version-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.file-version-main b { font-weight: 500; }
+.file-version-main .muted { font-size: 11px; }
+.file-version-diff { flex: 1; min-width: 0; overflow-y: auto; }
+.file-version-actions { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
+.blame-head { display: flex; align-items: center; gap: 10px; padding: 8px 14px; font-size: 12px; border-bottom: 1px solid var(--border-soft); }
+.blame { font-size: 12px; padding-bottom: 12px; }
+.blame-row { display: grid; grid-template-columns: 300px 44px 1fr; align-items: center; min-height: 20px; border-left: 3px solid color-mix(in srgb, var(--accent) calc(var(--age) * 100%), var(--surface-3)); }
+.blame-row.run-start { border-top: 1px solid var(--border-soft); }
+.blame-row:hover { background: var(--surface-2); }
+.blame-who { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 0 6px 0 9px; }
+.blame-commit { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; text-align: left; color: var(--text-2); }
+.blame-commit:hover { color: var(--text); }
+.blame-commit .muted { flex: none; font-size: 11px; }
+.blame-before { opacity: 0; flex: none; }
+.blame-row:hover .blame-before, .blame-before:focus-visible { opacity: 1; }
+.blame-ln { text-align: right; padding-right: 10px; color: var(--text-3); font-family: var(--mono); font-size: 11px; }
+.blame code { white-space: pre; overflow: hidden; text-overflow: ellipsis; }

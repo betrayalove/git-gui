@@ -66,7 +66,7 @@ function BulkEditor({ shas }: { shas: string[] }): ReactNode {
 }
 
 export function Inspector(): ReactNode {
-  const { selected, commits, draft, setDraft, client } = useRepo()
+  const { selected, commits, draft, setDraft, client, search, searchMode, openFile } = useRepo()
   const [diff, setDiff] = useState<DiffResult | null>(null)
   const [showCommitter, setShowCommitter] = useState(false)
   const sha = selected.length === 1 ? selected[0] : null
@@ -179,7 +179,11 @@ export function Inspector(): ReactNode {
           </>
         )}
       </div>
-      <div className="inspector-diff"><DiffView diff={diff} /></div>
+      <div className="inspector-diff"><DiffView
+        diff={diff}
+        highlight={searchMode === 'content' ? search.trim() : undefined}
+        actions={{ file: (file) => file.status === 'deleted' ? null : <button className="btn btn-small btn-ghost" title="Все изменения этого файла и кто менял строки" onClick={() => openFile(file.path)}>История файла</button> }}
+      /></div>
     </aside>
   )
 }

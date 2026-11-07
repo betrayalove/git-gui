@@ -39,8 +39,10 @@ interface DropTarget {
   zone: 'above' | 'below' | 'onto'
 }
 
-export function HistoryView({ search }: { search: string }): ReactNode {
-  const { commits, snapshot, draft, setDraft, selected, setSelected, hasMore, loadMore, client, run, toast } = useRepo()
+const SEARCH_DELAY_MS = 350
+
+export function HistoryView(): ReactNode {
+  const { commits, snapshot, draft, setDraft, selected, setSelected, hasMore, loadMore, client, run, toast, search, searchMode, focus } = useRepo()
   const { show } = useDialogs()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -60,15 +62,50 @@ export function HistoryView({ search }: { search: string }): ReactNode {
 
   const display = useMemo(() => applyDraftToCommits(commits, draft), [commits, draft])
   const query = search.trim().toLowerCase()
+  const [matches, setMatches] = useState<{ shas: Set<string>; limited: boolean } | null>(null)
+  const contentQuery = searchMode === 'content' ? query : ''
+  useEffect(() => {
+    setMatches(null)
+    if (!contentQuery) return
+    let cancelled = false
+    // Searching changes reads every diff, so it waits until typing pauses.
+    const timer = setTimeout(() => {
+      client.searchChanges({ text: contentQuery })
+        .then((result) => { if (!cancelled) setMatches({ shas: new Set(result.shas), limited: result.limited }) })
+        .catch((error: Error) => { if (!cancelled) toast('error', error.message) })
+    }, SEARCH_DELAY_MS)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [client, contentQuery, toast])
   const filtered = useMemo<DisplayCommit[]>(() => {
     if (!query) return display
+    if (searchMode === 'content') return matches ? display.filter((commit) => matches.shas.has(commit.sha)) : []
     return display.filter((commit) =>
       commit.message.toLowerCase().includes(query) ||
       commit.authorName.toLowerCase().includes(query) ||
       commit.authorEmail.toLowerCase().includes(query) ||
       commit.sha.startsWith(query)
     )
-  }, [display, query])
+  }, [display, matches, query, searchMode])
+  const unloaded = matches ? matches.shas.size - filtered.length : 0
+
+  useEffect(() => {
+    if (!focus || !scroller.current) return
+    const index = filtered.findIndex((commit) => commit.sha === focus.sha)
+    if (index === -1) {
+      toast('info', 'Этот коммит дальше загруженной истории. Загрузи её внизу списка.')
+      return
+    }
+    const element = scroller.current
+    const top = index * ROW_HEIGHT
+    if (top < element.scrollTop || top > element.scrollTop + element.clientHeight - ROW_HEIGHT) {
+      element.scrollTop = Math.max(0, top - element.clientHeight / 3)
+    }
+    // Only a new request should scroll, not every change to the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus])
   const rows = useMemo(() => (query ? [] : layoutGraph(display).map((row) => clampRow(row, MAX_LANES))), [display, query])
 
   const refsBySha = useMemo(() => {
@@ -353,7 +390,19 @@ export function HistoryView({ search }: { search: string }): ReactNode {
         {hasMore && !query && (
           <div className="load-more"><button className="btn btn-ghost" onClick={() => void loadMore()}>Загрузить ещё</button></div>
         )}
-        {query && !filtered.length && <EmptyState icon="search" title="Ничего не найдено">Поиск идёт по сообщению, автору и SHA.</EmptyState>}
+        {query && searchMode === 'content' && !matches && <div className="diff-loading">Ищу в изменениях…</div>}
+        {query && (searchMode === 'message' || matches) && !filtered.length && !unloaded && (
+          <EmptyState icon="search" title="Ничего не найдено">
+            {searchMode === 'content' ? 'Ни один коммит не добавлял и не удалял строку с этим текстом.' : 'Поиск идёт по сообщению, автору и SHA. Чтобы искать в изменённых строках, нажми { } в поле поиска.'}
+          </EmptyState>
+        )}
+        {(unloaded > 0 || matches?.limited) && (
+          <div className="load-more">
+            {unloaded > 0 && <span className="muted">Ещё найдено в незагруженной истории: {unloaded}. </span>}
+            {matches?.limited && <span className="muted">Показаны первые совпадения, уточни запрос. </span>}
+            {hasMore && <button className="btn btn-ghost" onClick={() => void loadMore()}>Загрузить ещё</button>}
+          </div>
+        )}
       </div>
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
     </div>

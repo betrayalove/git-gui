@@ -10,6 +10,7 @@ import { ContextMenu, Icon, type MenuItem } from './components/ui'
 import { plural } from './format'
 import { RepoProvider, useRepo } from './store'
 import { ChangesView } from './views/ChangesView'
+import { FilesView } from './views/FilesView'
 import { HistoryView } from './views/HistoryView'
 import { Inspector } from './views/Inspector'
 import { JournalView } from './views/JournalView'
@@ -22,8 +23,8 @@ function baseName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 }
 
-function Toolbar({ search, onSearch }: { search: string; onSearch: (value: string) => void }): ReactNode {
-  const { repo, snapshot, client, run, toast, closeRepo, busy, view } = useRepo()
+function Toolbar(): ReactNode {
+  const { repo, snapshot, client, run, toast, closeRepo, busy, view, search, setSearch, searchMode, setSearchMode } = useRepo()
   const { show, close } = useDialogs()
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const status = snapshot?.status
@@ -77,7 +78,18 @@ function Toolbar({ search, onSearch }: { search: string; onSearch: (value: strin
         {view === 'history' && (
           <label className="search">
             <Icon name="search" size={14} />
-            <input value={search} placeholder="Поиск по истории" aria-label="Поиск по истории" onChange={(event) => onSearch(event.target.value)} />
+            <input
+              value={search}
+              placeholder={searchMode === 'content' ? 'Поиск в изменениях' : 'Поиск по истории'}
+              aria-label={searchMode === 'content' ? 'Поиск в изменениях' : 'Поиск по истории'}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <button
+              className={`search-mode ${searchMode === 'content' ? 'active' : ''}`}
+              aria-pressed={searchMode === 'content'}
+              title={searchMode === 'content' ? 'Ищу в изменённых строках. Нажми, чтобы искать в сообщениях' : 'Ищу в сообщениях, авторах и SHA. Нажми, чтобы искать в изменённых строках'}
+              onClick={() => setSearchMode(searchMode === 'content' ? 'message' : 'content')}
+            >{'{ }'}</button>
           </label>
         )}
       </div>
@@ -119,7 +131,6 @@ function Toasts(): ReactNode {
 
 function Workspace(): ReactNode {
   const { view, snapshot, client, run, repo, access, showAccess, reload } = useRepo()
-  const [search, setSearch] = useState('')
   const lastApplied = [...(snapshot?.journal ?? [])].reverse().find((entry) => entry.state === 'applied')
 
   useEffect(() => {
@@ -137,17 +148,18 @@ function Workspace(): ReactNode {
 
   return (
     <div className="workspace">
-      <Toolbar search={search} onSearch={setSearch} />
+      <Toolbar />
       <div className="workspace-body">
         <Sidebar />
         <main className="main-pane">
           {view === 'history' && (
             <div className="history-layout">
-              <HistoryView search={search} />
+              <HistoryView />
               <Inspector />
             </div>
           )}
           {view === 'changes' && <ChangesView />}
+          {view === 'files' && <FilesView />}
           {view === 'stash' && <StashView />}
           {view === 'schedule' && <ScheduleView />}
           {view === 'journal' && <JournalView />}

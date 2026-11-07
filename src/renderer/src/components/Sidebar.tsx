@@ -33,7 +33,7 @@ function Section({ title, count, children, action }: { title: string; count: num
 }
 
 export function Sidebar(): ReactNode {
-  const { snapshot, view, setView, client, run, setSelected } = useRepo()
+  const { snapshot, view, setView, client, run, jumpTo } = useRepo()
   const { show } = useDialogs()
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const refs = useMemo(() => snapshot?.refs ?? [], [snapshot?.refs])
@@ -51,15 +51,11 @@ export function Sidebar(): ReactNode {
   const nav: { id: View; label: string; icon: string; count?: number }[] = [
     { id: 'history', label: 'История', icon: 'history' },
     { id: 'changes', label: 'Изменения', icon: 'changes', count: changes },
+    { id: 'files', label: 'Файлы', icon: 'file' },
     { id: 'stash', label: 'Stash', icon: 'stash', count: snapshot?.stashes.length },
     { id: 'schedule', label: 'Публикации', icon: 'schedule', count: pending },
     { id: 'journal', label: 'Журнал', icon: 'journal' }
   ]
-
-  const jumpTo = (sha: string): void => {
-    setView('history')
-    setSelected([sha])
-  }
 
   const branchMenu = (event: MouseEvent, branch: RefInfo): void => {
     event.preventDefault()

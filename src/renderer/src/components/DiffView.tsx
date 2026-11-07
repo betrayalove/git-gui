@@ -11,7 +11,23 @@ export interface DiffActions {
   file?: (file: FileDiff) => ReactNode
 }
 
-function FileBlock({ file, defaultOpen, actions }: { file: FileDiff; defaultOpen: boolean; actions?: DiffActions }): ReactNode {
+/** Marks every occurrence of `term`, ignoring case, the way the search found it. */
+function Highlighted({ text, term }: { text: string; term?: string }): ReactNode {
+  if (!term) return text
+  const lower = text.toLowerCase()
+  const needle = term.toLowerCase()
+  const parts: ReactNode[] = []
+  let from = 0
+  for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, from)) {
+    parts.push(text.slice(from, at), <mark key={at}>{text.slice(at, at + needle.length)}</mark>)
+    from = at + needle.length
+  }
+  if (!parts.length) return text
+  parts.push(text.slice(from))
+  return parts
+}
+
+function FileBlock({ file, defaultOpen, actions, highlight }: { file: FileDiff; defaultOpen: boolean; actions?: DiffActions; highlight?: string }): ReactNode {
   const [open, setOpen] = useState(defaultOpen)
   const [showAll, setShowAll] = useState(false)
   const total = file.hunks.reduce((sum, hunk) => sum + hunk.lines.length, 0)
@@ -50,7 +66,7 @@ function FileBlock({ file, defaultOpen, actions }: { file: FileDiff; defaultOpen
                       <span className="ln">{line.oldNo ?? ''}</span>
                       <span className="ln">{line.newNo ?? ''}</span>
                       <span className="mark">{line.type === 'add' ? '+' : line.type === 'del' ? '−' : ''}</span>
-                      <code>{line.text}</code>
+                      <code><Highlighted text={line.text} term={line.type === 'context' ? undefined : highlight} /></code>
                     </div>
                   )
                 })}
@@ -68,14 +84,14 @@ function FileBlock({ file, defaultOpen, actions }: { file: FileDiff; defaultOpen
   )
 }
 
-export function DiffView({ diff, actions }: { diff: DiffResult | null; actions?: DiffActions }): ReactNode {
+export function DiffView({ diff, actions, highlight }: { diff: DiffResult | null; actions?: DiffActions; highlight?: string }): ReactNode {
   if (!diff) return <div className="diff-loading">Загружаю изменения…</div>
   if (!diff.files.length) return <div className="diff-note">Изменений нет</div>
   return (
     <div className="diff">
       {diff.truncated && <div className="banner warn">Изменения слишком большие и показаны не полностью.</div>}
       {diff.files.map((file, index) => (
-        <FileBlock key={`${file.path}-${index}`} file={file} defaultOpen={diff.files.length <= 20} actions={actions} />
+        <FileBlock key={`${file.path}-${index}`} file={file} defaultOpen={diff.files.length <= 20} actions={actions} highlight={highlight} />
       ))}
     </div>
   )
