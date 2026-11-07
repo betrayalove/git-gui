@@ -5,7 +5,8 @@ import type { AskpassRequest } from './askpass'
 /** Encrypted storage for key passwords. Absent when the system offers no safe place. */
 export interface SecretStore {
   available(): boolean
-  get(key: string): string | null
+  /** May wait for a system dialog, so it must not be called just to see what is possible. */
+  get(key: string): Promise<string | null>
   set(key: string, value: string): Promise<void>
   delete(key: string): Promise<void>
 }
@@ -33,7 +34,7 @@ export class PromptBroker {
     private readonly now: () => number = Date.now
   ) {}
 
-  private known(key: string): string | null {
+  private async known(key: string): Promise<string | null> {
     const entry = this.session.get(key)
     if (entry && this.now() - entry.at < SESSION_MS) return entry.value
     this.session.delete(key)
@@ -43,7 +44,12 @@ export class PromptBroker {
   async remember(keyPath: string, value: string, persist: boolean): Promise<void> {
     const key = normalizeKeyPath(keyPath)
     this.session.set(key, { value, at: this.now() })
-    if (persist && this.saved.available()) await this.saved.set(key, value)
+    if (!persist || !this.saved.available()) return
+    try {
+      await this.saved.set(key, value)
+    } catch {
+      // The system refused to store it. The password still works for now, so the push goes on.
+    }
   }
 
   private async forget(key: string): Promise<void> {
@@ -65,7 +71,7 @@ export class PromptBroker {
     if (!key) return request.background ? null : (await this.ask(this.toPrompt(parsed, false)))?.answer ?? null
     if (parsed.retry) await this.forget(key)
     else {
-      const known = this.known(key)
+      const known = await this.known(key)
       if (known !== null) {
         if (await this.verify(parsed.keyPath!, known)) return known
         await this.forget(key)

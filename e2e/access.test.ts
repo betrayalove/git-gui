@@ -26,6 +26,8 @@ interface Launched {
   home: string
   opened: () => Promise<string[]>
   copied: () => Promise<string[]>
+  /** Calls that can show a system dialog on macOS and, if synchronous, freeze the app. */
+  keychain: () => Promise<{ sync: number; any: number }>
 }
 
 /** Starts the app on a repository whose remote is the real sshd, with its own empty ~/.ssh. */
@@ -75,6 +77,19 @@ async function launch(name: string, prepare?: (home: string) => void, knownHost 
     shell.openExternal = async (url: string) => { box.opened.push(url) }
     clipboard.writeText = async (text: string) => { box.copied.push(text) }
   })
+  await app.evaluate(({ safeStorage }) => {
+    const box = globalThis as unknown as { keychain: { sync: number; any: number } }
+    box.keychain = { sync: 0, any: 0 }
+    const store = safeStorage as unknown as Record<string, (...args: unknown[]) => unknown>
+    for (const name of ['isEncryptionAvailable', 'encryptString', 'decryptString', 'isAsyncEncryptionAvailable', 'encryptStringAsync', 'decryptStringAsync']) {
+      const original = store[name].bind(safeStorage)
+      store[name] = (...args: unknown[]) => {
+        box.keychain.any++
+        if (!name.includes('Async')) box.keychain.sync++
+        return original(...args)
+      }
+    }
+  })
   const page = await app.firstWindow()
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.locator('.recent-row button').first().click()
@@ -82,7 +97,8 @@ async function launch(name: string, prepare?: (home: string) => void, knownHost 
   return {
     app, page, repo, userData, home,
     opened: () => app.evaluate(() => (globalThis as unknown as { opened: string[] }).opened),
-    copied: () => app.evaluate(() => (globalThis as unknown as { copied: string[] }).copied)
+    copied: () => app.evaluate(() => (globalThis as unknown as { copied: string[] }).copied),
+    keychain: () => app.evaluate(() => (globalThis as unknown as { keychain: { sync: number; any: number } }).keychain)
   }
 }
 
@@ -199,12 +215,20 @@ describe.skipIf(!server)('Connecting without an account', () => {
     })
     afterAll(async () => { await run?.app.close() })
 
+    it('leaves the system keychain alone until asked to remember', async () => {
+      await run.page.getByRole('button', { name: 'Настройки' }).click()
+      await run.page.getByRole('button', { name: 'Настроить SSH-ключ' }).waitFor()
+      await run.page.getByRole('dialog').getByRole('button', { name: 'Закрыть' }).click()
+      expect(await run.keychain()).toEqual({ sync: 0, any: 0 })
+    })
+
     it('asks for it, says when it is wrong, and offers to remember it', async () => {
       await fetchButton(run.page).click()
       const dialog = run.page.getByRole('dialog', { name: 'Пароль SSH-ключа' })
       await dialog.waitFor()
       await dialog.getByText('id_ed25519').waitFor()
       if (shots) await run.page.screenshot({ path: join(shots, '35-passphrase.png') })
+      expect(await run.keychain()).toEqual({ sync: 0, any: 0 })
       await dialog.getByLabel('Пароль ключа').fill('неверный')
       await dialog.getByRole('button', { name: 'Продолжить' }).click()
       await run.page.getByText('Пароль не подошёл').waitFor()
@@ -212,6 +236,12 @@ describe.skipIf(!server)('Connecting without an account', () => {
       await run.page.getByText('Запомнить на этом компьютере').click()
       await dialog.getByRole('button', { name: 'Продолжить' }).click()
       await run.page.getByText('Данные с сервера обновлены').waitFor()
+    })
+
+    it('uses only calls that cannot freeze the app', async () => {
+      const calls = await run.keychain()
+      expect(calls.any).toBeGreaterThan(0)
+      expect(calls.sync).toBe(0)
     })
 
     it('keeps the saved password encrypted', () => {

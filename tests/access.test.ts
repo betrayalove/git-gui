@@ -125,7 +125,7 @@ describe('deciding who answers a question', () => {
     const time = { now: 1000 }
     const store: SecretStore = {
       available: () => true,
-      get: (key) => saved.get(key) ?? null,
+      get: async (key) => saved.get(key) ?? null,
       set: async (key, value) => void saved.set(key, value),
       delete: async (key) => void saved.delete(key)
     }
@@ -172,7 +172,7 @@ describe('deciding who answers a question', () => {
       return { answer: replies.shift()! }
     }, {
       available: () => true,
-      get: (key) => saved.get(key) ?? null,
+      get: async (key) => saved.get(key) ?? null,
       set: async (key, value) => void saved.set(key, value),
       delete: async (key) => void saved.delete(key)
     }, async (_path, value) => value === 'right')
@@ -180,6 +180,28 @@ describe('deciding who answers a question', () => {
     expect(saved.size).toBe(0)
     expect(await broker.handle({ prompt: question, background: false })).toBe('right')
     expect(asked.map((prompt) => prompt.retry)).toEqual([false, true])
+  })
+
+  it('still answers when the system refuses to store a password', async () => {
+    const broker = new PromptBroker(async () => ({ answer: 'pw', remember: true }), {
+      available: () => true,
+      get: async () => null,
+      set: async () => { throw new Error('refused') },
+      delete: async () => {}
+    })
+    expect(await broker.handle({ prompt: question, background: false })).toBe('pw')
+  })
+
+  it('does not touch the system store when nothing was saved and nothing is asked', async () => {
+    let reads = 0
+    const broker = new PromptBroker(async () => null, {
+      available: () => true,
+      get: async () => { reads++; return null },
+      set: async () => {},
+      delete: async () => {}
+    })
+    await broker.handle({ prompt: "Username for 'https://host': ", background: false })
+    expect(reads).toBe(0)
   })
 
   it('never waits for a person in the background', async () => {

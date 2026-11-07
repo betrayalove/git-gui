@@ -3,7 +3,15 @@ import { dirname } from 'node:path'
 import { safeStorage } from 'electron'
 import type { SecretStore } from '../core/prompt-broker'
 
-/** Key passwords the person chose to keep, encrypted by the operating system's credential store. */
+const KEYCHAIN_WAIT_MS = 2 * 60_000
+
+/**
+ * Key passwords the person chose to keep, encrypted by the operating system's credential store.
+ *
+ * On macOS any use of the store may show a system dialog, which an unsigned build gets after every
+ * update, and the synchronous calls would freeze the whole app until it is answered. So only the
+ * asynchronous calls are used, and only when a password is really being saved or read.
+ */
 export class PassphraseStore implements SecretStore {
   private entries: Record<string, string> = {}
 
@@ -24,22 +32,29 @@ export class PassphraseStore implements SecretStore {
 
   /** On Linux without a keyring Electron falls back to a fixed key, which protects nothing. */
   available(): boolean {
-    if (!safeStorage.isEncryptionAvailable()) return false
     return process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'
   }
 
-  get(key: string): string | null {
+  async get(key: string): Promise<string | null> {
     const stored = this.entries[key]
     if (!stored) return null
+    let timer: NodeJS.Timeout | undefined
     try {
-      return safeStorage.decryptString(Buffer.from(stored, 'base64'))
+      // A dialog nobody answers must not hold up a timed publish for good.
+      const unanswered = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), KEYCHAIN_WAIT_MS) })
+      const decrypted = await Promise.race([safeStorage.decryptStringAsync(Buffer.from(stored, 'base64')), unanswered])
+      if (!decrypted) return null
+      if (decrypted.shouldReEncrypt) await this.set(key, decrypted.result)
+      return decrypted.result
     } catch {
       return null
+    } finally {
+      clearTimeout(timer)
     }
   }
 
   async set(key: string, value: string): Promise<void> {
-    this.entries[key] = safeStorage.encryptString(value).toString('base64')
+    this.entries[key] = (await safeStorage.encryptStringAsync(value)).toString('base64')
     await this.save()
   }
 

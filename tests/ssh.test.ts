@@ -18,7 +18,7 @@ let answer: (prompt: AccessPrompt) => PromptReply | null = () => null
 const saved = new Map<string, string>()
 const store: SecretStore = {
   available: () => true,
-  get: (key) => saved.get(key) ?? null,
+  get: async (key) => saved.get(key) ?? null,
   set: async (key, value) => void saved.set(key, value),
   delete: async (key) => void saved.delete(key)
 }
