@@ -116,7 +116,7 @@ export async function revParse(cwd: string, rev: string): Promise<string | null>
   return code === 0 ? stdout.toString('utf8').trim() : null
 }
 
-export const MIN_GIT_VERSION: [number, number] = [2, 45]
+const MIN_GIT_VERSION: [number, number] = [2, 45]
 
 export async function checkGitVersion(): Promise<string> {
   const text = await gitLine(process.cwd(), ['--version'])

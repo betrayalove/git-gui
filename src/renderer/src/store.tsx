@@ -13,14 +13,14 @@ function keyOfRefs(snapshot: RepoSnapshot): string {
 }
 
 /** A refused connection, and how to repeat what failed once it is fixed. */
-export interface AccessRequest {
+interface AccessRequest {
   issue: AccessIssue
   retry?: () => void
 }
 
 export type View = 'history' | 'changes' | 'stash' | 'schedule' | 'journal'
 
-export interface Toast {
+interface Toast {
   id: number
   kind: 'info' | 'error' | 'success'
   text: string

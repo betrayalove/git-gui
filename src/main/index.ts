@@ -17,6 +17,9 @@ import { api, type AppApi, type ApiMethod } from './api'
 import { PassphraseStore } from './passphrases'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
+// The portable Windows build unpacks to a temporary folder and names its real location here.
+const portableDir = process.env.PORTABLE_EXECUTABLE_DIR
+if (portableDir) app.setPath('userData', join(portableDir, 'Chronicle Data'))
 const statePath = (): string => join(app.getPath('userData'), 'state.json')
 const TICK_MS = 30_000
 const RECENT_LIMIT = 20
@@ -276,11 +279,11 @@ const appHandlers: AppApi = {
     await saveState()
   },
   autostart: async () => ({
-    available: app.isPackaged,
-    enabled: app.isPackaged && app.getLoginItemSettings().openAtLogin
+    available: app.isPackaged && !portableDir,
+    enabled: app.isPackaged && !portableDir && app.getLoginItemSettings().openAtLogin
   }),
   setAutostart: async (enabled) => {
-    if (!app.isPackaged) throw new Error('Автозапуск доступен только в установленном приложении')
+    if (!app.isPackaged || portableDir) throw new Error('Автозапуск доступен только в установленном приложении')
     app.setLoginItemSettings({ openAtLogin: enabled, args: enabled ? [HIDDEN_FLAG] : [] })
   }
 }

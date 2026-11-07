@@ -5,7 +5,7 @@ import { git, gitLine, revParse, runGit } from './git'
 import { readCommits, readRefs, readRemotes } from './read'
 import { sshCommandFor } from './ssh'
 
-export async function validateBranchName(cwd: string, name: string): Promise<void> {
+async function validateBranchName(cwd: string, name: string): Promise<void> {
   const { code } = await runGit(cwd, ['check-ref-format', '--branch', name], { okCodes: [1, 128] })
   if (code !== 0) throw new Error(`Недопустимое имя ветки: ${name}`)
 }
@@ -312,7 +312,7 @@ export async function lsRemoteBranch(cwd: string, remote: string, branch: string
   return line ? line.split('\t')[0] : null
 }
 
-export async function remoteDefaultBranch(cwd: string, remote: string): Promise<string | null> {
+async function remoteDefaultBranch(cwd: string, remote: string): Promise<string | null> {
   const raw = await git(cwd, ['ls-remote', '--symref', '--', remote, 'HEAD'])
   return /^ref: refs\/heads\/(\S+)\s+HEAD$/m.exec(raw)?.[1] ?? null
 }

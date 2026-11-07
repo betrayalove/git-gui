@@ -23,7 +23,7 @@ const LOG_FORMAT = [
   '%H', '%P', '%T', '%an', '%ae', '%aI', '%cn', '%ce', '%cI', '%B'
 ].join('%x1f')
 
-export function parseLog(raw: string): Commit[] {
+function parseLog(raw: string): Commit[] {
   return raw
     .split(RS)
     .slice(1)
@@ -157,7 +157,7 @@ function stateFromCode(code: string): FileState | undefined {
   }
 }
 
-export function parseStatus(raw: string): Omit<RepoStatus, 'operation'> {
+function parseStatus(raw: string): Omit<RepoStatus, 'operation'> {
   const status: Omit<RepoStatus, 'operation'> = {
     head: null, headSha: null, detached: false, ahead: 0, behind: 0, files: []
   }

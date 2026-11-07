@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { GraphRow } from '../../../shared/graph'
 
-export const LANE_WIDTH = 14
+const LANE_WIDTH = 14
 export const ROW_HEIGHT = 36
 const PADDING = 12
 

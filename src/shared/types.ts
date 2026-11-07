@@ -12,7 +12,7 @@ export interface Commit {
   message: string
 }
 
-export type RefKind = 'branch' | 'remote' | 'tag'
+type RefKind = 'branch' | 'remote' | 'tag'
 
 export interface RefInfo {
   ref: string
@@ -122,7 +122,7 @@ export interface TodoItem {
 }
 
 /** A new order for the linear range base..tip of a branch, oldest first. */
-export interface RewriteSequence {
+interface RewriteSequence {
   base: string | null
   tip: string
   todo: TodoItem[]

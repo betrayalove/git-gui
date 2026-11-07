@@ -51,7 +51,7 @@ export interface SshTarget {
   port?: number
 }
 
-export function targetFromRemote(parsed: ParsedRemote): SshTarget | null {
+function targetFromRemote(parsed: ParsedRemote): SshTarget | null {
   if (parsed.protocol === 'ssh') return { host: parsed.host, user: parsed.user ?? 'git', ...(parsed.port ? { port: parsed.port } : {}) }
   return parsed.host.includes(':') ? null : { host: parsed.host, user: 'git' }
 }
@@ -72,7 +72,7 @@ export function sshKeysPage(kind: 'github' | 'gitlab', host: string): string {
   return kind === 'github' ? `https://${host}/settings/ssh/new` : `https://${host}/-/user_settings/ssh_keys`
 }
 
-export type PromptKind = 'passphrase' | 'password' | 'username' | 'host-key' | 'confirm' | 'text'
+type PromptKind = 'passphrase' | 'password' | 'username' | 'host-key' | 'confirm' | 'text'
 
 export interface ParsedPrompt {
   kind: PromptKind

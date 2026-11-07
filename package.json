@@ -4,6 +4,12 @@
   "version": "0.4.0",
   "private": true,
   "description": "Visual Git history editor for macOS and Windows",
+  "homepage": "https://github.com/betrayalove/git-gui#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/betrayalove/git-gui.git"
+  },
+  "bugs": "https://github.com/betrayalove/git-gui/issues",
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {
@@ -17,7 +23,8 @@
     "dist": "electron-vite build && electron-builder --publish never",
     "dist:mac": "electron-vite build && electron-builder --mac --publish never",
     "dist:win": "electron-vite build && electron-builder --win --publish never",
-    "dist:win:zip": "electron-vite build && electron-builder --win zip --x64 --publish never"
+    "dist:win:zip": "electron-vite build && electron-builder --win zip --x64 --publish never",
+    "icon": "electron-vite build && node --experimental-strip-types scripts/render-icon.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -54,14 +61,27 @@
       "out/**",
       "package.json"
     ],
-    "artifactName": "Chronicle-${version}-${os}-${arch}.${ext}",
     "mac": {
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "category": "public.app-category.developer-tools",
       "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "artifactName": "Chronicle-${version}-macos-${arch}-portable.${ext}"
     },
     "win": {
       "target": [
@@ -72,17 +92,31 @@
           ]
         },
         {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "zip",
           "arch": [
             "x64"
           ]
         }
-      ]
+      ],
+      "artifactName": "Chronicle-${version}-windows-${arch}-portable.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Chronicle-${version}-windows-${arch}-setup.${ext}"
+    },
+    "dmg": {
+      "artifactName": "Chronicle-${version}-macos-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Chronicle-${version}-windows-${arch}-portable.${ext}"
     }
   }
 }

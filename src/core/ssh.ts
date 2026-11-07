@@ -47,7 +47,7 @@ function sshHome(): string {
   return (process.platform === 'win32' && process.env.HOME) || homedir()
 }
 
-export function sshDir(): string {
+function sshDir(): string {
   return join(sshHome(), '.ssh')
 }
 

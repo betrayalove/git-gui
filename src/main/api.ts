@@ -98,7 +98,7 @@ export const api = {
   dismissSchedule: schedule.dismissSchedule
 }
 
-export type Api = typeof api
+type Api = typeof api
 export type ApiMethod = keyof Api
 
 type Tail<T extends unknown[]> = T extends [unknown, ...infer Rest] ? Rest : never
