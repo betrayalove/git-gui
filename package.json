@@ -24,6 +24,7 @@
     "dist:mac": "electron-vite build && electron-builder --mac --publish never",
     "dist:win": "electron-vite build && electron-builder --win --publish never",
     "dist:win:zip": "electron-vite build && electron-builder --win zip --x64 --publish never",
+    "dist:linux": "electron-vite build && electron-builder --linux --publish never",
     "icon": "electron-vite build && node --experimental-strip-types scripts/render-icon.ts"
   },
   "pnpm": {
@@ -117,6 +118,50 @@
     },
     "portable": {
       "artifactName": "Chronicle-${version}-windows-${arch}-portable.${ext}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development",
+      "maintainer": "betrayalove <50327133+betrayalove@users.noreply.github.com>",
+      "synopsis": "Visual Git history editor",
+      "artifactName": "Chronicle-${version}-linux-x64-portable.${ext}"
+    },
+    "appImage": {
+      "artifactName": "Chronicle-${version}-linux-x64.${ext}"
+    },
+    "deb": {
+      "artifactName": "Chronicle-${version}-linux-x64.${ext}",
+      "depends": [
+        "git",
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ]
     }
   }
 }

@@ -1,6 +1,6 @@
 # Chronicle: проектное решение
 
-Chronicle — настольный редактор истории git для macOS и Windows. Название рабочее.
+Chronicle — настольный редактор истории git для macOS, Windows и Linux.
 
 ## Принципы
 

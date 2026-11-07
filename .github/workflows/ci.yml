@@ -24,6 +24,7 @@ jobs:
       - run: pnpm test
         env:
           CHRONICLE_REQUIRE_SSHD: "1"
+          CHRONICLE_REQUIRE_LFS: "1"
       - run: pnpm exec electron --version
         env:
           ELECTRON_RUN_AS_NODE: "1"
@@ -52,8 +53,15 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: sudo apt-get install -y openssh-server
+      - run: sudo apt-get update && sudo apt-get install -y openssh-server xvfb git-lfs
       - run: sudo mkdir -p /run/sshd
+      - run: pnpm typecheck
       - run: pnpm test
+        env:
+          CHRONICLE_REQUIRE_SSHD: "1"
+          CHRONICLE_REQUIRE_LFS: "1"
+      # Ubuntu blocks the user namespaces Chromium's sandbox needs unless the helper is installed as root.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: xvfb-run -a pnpm test:e2e
         env:
           CHRONICLE_REQUIRE_SSHD: "1"

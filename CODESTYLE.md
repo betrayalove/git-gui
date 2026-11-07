@@ -81,7 +81,7 @@ These rules protect people's repositories. They are not style preferences.
 
 ## Platforms
 
-Everything must work on macOS and Windows.
+Everything must work on macOS, Windows and Linux.
 
 - Build paths with `node:path`. Remember that Git for Windows has its own `ssh` and `sh` and may print paths as `C:/x` or `/c/x`.
 - Scripts that git or ssh must execute are written to disk at startup, because they cannot run from inside the app archive.

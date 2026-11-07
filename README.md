@@ -5,14 +5,14 @@
 <h1 align="center">Chronicle</h1>
 
 <p align="center">
-  <b>A visual Git history editor for macOS and Windows.</b><br>
+  <b>A visual Git history editor for macOS, Windows and Linux.</b><br>
   Rewrite, reorder, squash and schedule commits. See every change before it happens, and undo it afterwards.
 </p>
 
 <p align="center">
   <a href="https://github.com/betrayalove/git-gui/releases/latest"><img src="https://img.shields.io/github/v/release/betrayalove/git-gui?include_prereleases&label=release&color=3b82f6" alt="Latest release"></a>
   <a href="https://github.com/betrayalove/git-gui/actions/workflows/ci.yml"><img src="https://github.com/betrayalove/git-gui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-6b7280" alt="macOS and Windows">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-6b7280" alt="macOS, Windows and Linux">
 </p>
 
 <p align="center">
@@ -87,6 +87,7 @@ Get the latest version from [Releases](https://github.com/betrayalove/git-gui/re
 | **Windows** x64 | `…-windows-x64-setup.exe` | `…-windows-x64-portable.exe`, `…-windows-x64-portable.zip` |
 | **macOS** Apple silicon | `…-macos-arm64.dmg` | `…-macos-arm64-portable.zip` |
 | **macOS** Intel | `…-macos-x64.dmg` | `…-macos-x64-portable.zip` |
+| **Linux** x64 | `…-linux-x64.deb` | `…-linux-x64.AppImage`, `…-linux-x64-portable.tar.gz` |
 
 The portable `.exe` keeps its data in a `Chronicle Data` folder next to the file. Starting it takes a little longer, because it unpacks itself each time.
 
@@ -101,6 +102,7 @@ Builds are not signed with a paid developer certificate yet, so the system warns
   ```
 
 - **Windows:** in the SmartScreen window, choose **More info → Run anyway**.
+- **Linux:** the `.deb` package works out of the box. The AppImage needs `libfuse2`, and on Ubuntu 24.04 or newer it also needs Chromium's sandbox to be allowed, so prefer the package there.
 
 ## Development
 
@@ -138,6 +140,10 @@ pnpm dist:mac
 pnpm dist:win
 ```
 
+```bash
+pnpm dist:linux
+```
+
 ### Project layout
 
 | Path | Contents |
@@ -163,8 +169,8 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-[The release workflow](.github/workflows/release.yml) builds all installers and portable versions, starts them to check they work, and publishes a GitHub release with checksums. A tag with a suffix, such as `v1.2.0-beta.1`, becomes a pre-release.
+[The release workflow](.github/workflows/release.yml) builds the installers for all three systems and portable versions, starts them to check they work, and publishes a GitHub release with checksums. A tag with a suffix, such as `v1.2.0-beta.1`, becomes a pre-release.
 
 ## Contributing
 
-Read [CODESTYLE.md](CODESTYLE.md) first. It describes how code is written here and how changes are checked, for people and AI agents alike.
+Ideas and plans are in [docs/ROADMAP.md](docs/ROADMAP.md), in Russian. Read [CODESTYLE.md](CODESTYLE.md) first. It describes how code is written here and how changes are checked, for people and AI agents alike.

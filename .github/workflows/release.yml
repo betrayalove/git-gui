@@ -17,6 +17,8 @@ jobs:
             dist: dist:win
           - os: macos-latest
             dist: dist:mac
+          - os: ubuntu-latest
+            dist: dist:linux
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -38,6 +40,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Install Linux build and test tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb rpm
       - run: pnpm ${{ matrix.dist }}
 
       - name: Start the Windows app
@@ -64,6 +69,21 @@ jobs:
           softwareupdate --install-rosetta --agree-to-license
           node --experimental-strip-types e2e/packaged-smoke.ts dist/mac/Chronicle.app/Contents/MacOS/Chronicle
 
+      - name: Install and start the Linux package
+        if: runner.os == 'Linux'
+        run: |
+          # The package sets up Chromium's sandbox the way a user's system will, so no switch is turned off here.
+          sudo apt-get install -y ./dist/Chronicle-*-linux-x64.deb
+          xvfb-run -a node --experimental-strip-types e2e/packaged-smoke.ts /opt/Chronicle/chronicle
+      - name: Start the portable Linux app
+        if: runner.os == 'Linux'
+        run: |
+          mkdir portable
+          tar -xzf dist/Chronicle-*-linux-x64-portable.tar.gz -C portable --strip-components=1
+          # Unpacked, the sandbox helper is not owned by root, just as for a user who unpacks it.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          xvfb-run -a node --experimental-strip-types e2e/packaged-smoke.ts portable/chronicle
+
       - uses: actions/upload-artifact@v4
         with:
           name: chronicle-${{ runner.os }}
@@ -71,6 +91,9 @@ jobs:
             dist/*.dmg
             dist/*.exe
             dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.tar.gz
           if-no-files-found: error
 
   release:

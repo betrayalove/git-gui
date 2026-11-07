@@ -5,14 +5,14 @@
 <h1 align="center">Chronicle</h1>
 
 <p align="center">
-  <b>Визуальный редактор истории Git для macOS и Windows.</b><br>
+  <b>Визуальный редактор истории Git для macOS, Windows и Linux.</b><br>
   Переписывайте, переставляйте, объединяйте и публикуйте коммиты по таймеру. Каждое изменение видно заранее, и его можно отменить.
 </p>
 
 <p align="center">
   <a href="https://github.com/betrayalove/git-gui/releases/latest"><img src="https://img.shields.io/github/v/release/betrayalove/git-gui?include_prereleases&label=release&color=3b82f6" alt="Последний выпуск"></a>
   <a href="https://github.com/betrayalove/git-gui/actions/workflows/ci.yml"><img src="https://github.com/betrayalove/git-gui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-6b7280" alt="macOS и Windows">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-6b7280" alt="macOS, Windows и Linux">
 </p>
 
 <p align="center">
@@ -85,6 +85,7 @@ Pull Request и Merge Request открываются на сайте с уже �
 | **Windows** x64 | `…-windows-x64-setup.exe` | `…-windows-x64-portable.exe`, `…-windows-x64-portable.zip` |
 | **macOS** Apple silicon | `…-macos-arm64.dmg` | `…-macos-arm64-portable.zip` |
 | **macOS** Intel | `…-macos-x64.dmg` | `…-macos-x64-portable.zip` |
+| **Linux** x64 | `…-linux-x64.deb` | `…-linux-x64.AppImage`, `…-linux-x64-portable.tar.gz` |
 
 Portable-версия `.exe` хранит данные в папке `Chronicle Data` рядом с файлом. Запускается она чуть дольше, потому что каждый раз распаковывает себя.
 
@@ -99,6 +100,7 @@ Portable-версия `.exe` хранит данные в папке `Chronicle 
   ```
 
 - **Windows:** в окне SmartScreen выберите **Подробнее → Выполнить в любом случае**.
+- **Linux:** пакет `.deb` работает сразу. AppImage нужен `libfuse2`, а в Ubuntu 24.04 и новее ещё и разрешение для песочницы Chromium, поэтому там лучше ставить пакет.
 
 ## Разработка
 
@@ -136,6 +138,10 @@ pnpm dist:mac
 pnpm dist:win
 ```
 
+```bash
+pnpm dist:linux
+```
+
 ### Устройство проекта
 
 | Путь | Содержимое |
@@ -161,8 +167,8 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-[Процесс выпуска](.github/workflows/release.yml) соберёт все установщики и portable-версии, запустит их для проверки и опубликует выпуск на GitHub с контрольными суммами. Тег с суффиксом, например `v1.2.0-beta.1`, станет предварительным выпуском.
+[Процесс выпуска](.github/workflows/release.yml) соберёт установщики и portable-версии для всех трёх систем, запустит их для проверки и опубликует выпуск на GitHub с контрольными суммами. Тег с суффиксом, например `v1.2.0-beta.1`, станет предварительным выпуском.
 
 ## Участие в разработке
 
-Сначала прочитайте [CODESTYLE.md](CODESTYLE.md). Там описано, как здесь пишется код и как проверяются изменения, и для людей, и для ИИ-агентов.
+Идеи и планы собраны в [docs/ROADMAP.md](docs/ROADMAP.md). Перед началом прочитайте [CODESTYLE.md](CODESTYLE.md). Там описано, как здесь пишется код и как проверяются изменения, и для людей, и для ИИ-агентов.

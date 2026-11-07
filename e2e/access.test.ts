@@ -215,6 +215,9 @@ describe.skipIf(!server)('Connecting without an account', () => {
     })
     afterAll(async () => { await run?.app.close() })
 
+    // Linux without a keyring would store passwords under a fixed key, so the app does not offer it.
+    const canRemember = process.platform !== 'linux'
+
     it('leaves the system keychain alone until asked to remember', async () => {
       await run.page.getByRole('button', { name: 'Настройки' }).click()
       await run.page.getByRole('button', { name: 'Настроить SSH-ключ' }).waitFor()
@@ -233,31 +236,32 @@ describe.skipIf(!server)('Connecting without an account', () => {
       await dialog.getByRole('button', { name: 'Продолжить' }).click()
       await run.page.getByText('Пароль не подошёл').waitFor()
       await dialog.getByLabel('Пароль ключа').fill(passphrase)
-      await run.page.getByText('Запомнить на этом компьютере').click()
+      if (canRemember) await run.page.getByText('Запомнить на этом компьютере').click()
+      else expect(await run.page.getByText('Запомнить на этом компьютере').count()).toBe(0)
       await dialog.getByRole('button', { name: 'Продолжить' }).click()
       await run.page.getByText('Данные с сервера обновлены').waitFor()
     })
 
-    it('uses only calls that cannot freeze the app', async () => {
+    it.runIf(canRemember)('uses only calls that cannot freeze the app', async () => {
       const calls = await run.keychain()
       expect(calls.any).toBeGreaterThan(0)
       expect(calls.sync).toBe(0)
     })
 
-    it('keeps the saved password encrypted', () => {
+    it.runIf(canRemember)('keeps the saved password encrypted', () => {
       const onDisk = readFileSync(join(run.userData, 'key-passwords.json'), 'utf8')
       expect(onDisk).toContain('id_ed25519')
       expect(onDisk).not.toContain(passphrase)
     })
 
-    it('does not ask again after remembering', async () => {
+    it('does not ask again in the same session', async () => {
       await run.page.waitForTimeout(100)
       await fetchButton(run.page).click()
       await run.page.getByText('Данные с сервера обновлены').first().waitFor()
       expect(await run.page.getByRole('dialog', { name: 'Пароль SSH-ключа' }).count()).toBe(0)
     })
 
-    it('can forget saved passwords', async () => {
+    it.runIf(canRemember)('can forget saved passwords', async () => {
       await run.page.getByRole('button', { name: 'Настройки' }).click()
       await run.page.getByRole('button', { name: /Забыть сохранённые пароли ключей: 1/ }).click()
       await expect.poll(() => readFileSync(join(run.userData, 'key-passwords.json'), 'utf8').includes('id_ed25519')).toBe(false)
