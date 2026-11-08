@@ -7,7 +7,8 @@ import * as ssh from '../core/ssh'
 import * as workspace from '../core/workspace'
 import { withoutPrompts } from '../core/git'
 import type { AccessPrompt, PromptReply, SshTarget } from '../shared/access'
-import type { ForgeContext, UpdateInfo, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
+import type { Language } from '../shared/i18n'
+import type { ForgeContext, Theme, UpdateInfo, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
 
 export interface RepoSnapshot {
   status: RepoStatus
@@ -147,6 +148,10 @@ export interface AppApi {
   answerPrompt(id: string, reply: PromptReply | null): Promise<void>
   savedPassphrases(): Promise<{ available: boolean; count: number }>
   forgetPassphrases(): Promise<void>
+  preferences(): Promise<{ language: Language; theme: Theme }>
+  /** The window reloads afterwards, so every text is drawn again in the new language. */
+  setLanguage(language: Language): Promise<void>
+  setTheme(theme: Theme): Promise<void>
   autostart(): Promise<{ available: boolean; enabled: boolean }>
   setAutostart(enabled: boolean): Promise<void>
   checkForUpdates(): Promise<UpdateInfo>
@@ -156,6 +161,7 @@ export interface AppApi {
 
 export interface ChronicleBridge {
   platform: string
+  language: string
   call(method: string, ...args: unknown[]): Promise<unknown>
   app(method: string, ...args: unknown[]): Promise<unknown>
   onChanged(listener: (repo: string) => void): () => void

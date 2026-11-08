@@ -1,15 +1,20 @@
+import { locale, t } from '../../shared/i18n'
+
+export { plural } from '../../shared/i18n'
+
 export function shortSha(sha: string): string {
   return sha.slice(0, 7)
 }
 
-const relative = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' })
-const fullDate = new Intl.DateTimeFormat('ru', { dateStyle: 'long', timeStyle: 'short' })
-const shortDate = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short', year: 'numeric' })
+// The window reloads when the language changes, so the formats can be fixed once.
+const relative = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' })
+const fullDate = new Intl.DateTimeFormat(locale(), { dateStyle: 'long', timeStyle: 'short' })
+const shortDate = new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'short', year: 'numeric' })
 
 export function formatRelative(iso: string, now: number = Date.now()): string {
   const seconds = (Date.parse(iso) - now) / 1000
   const abs = Math.abs(seconds)
-  if (abs < 60) return 'только что'
+  if (abs < 60) return t('только что')
   if (abs < 3600) return relative.format(Math.round(seconds / 60), 'minute')
   if (abs < 86400) return relative.format(Math.round(seconds / 3600), 'hour')
   if (abs < 86400 * 14) return relative.format(Math.round(seconds / 86400), 'day')
@@ -52,12 +57,4 @@ export function hueOf(text: string): number {
   let hash = 0
   for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) | 0
   return Math.abs(hash) % 360
-}
-
-export function plural(count: number, one: string, few: string, many: string): string {
-  const mod10 = count % 10
-  const mod100 = count % 100
-  if (mod10 === 1 && mod100 !== 11) return `${count} ${one}`
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} ${few}`
-  return `${count} ${many}`
 }

@@ -56,7 +56,7 @@ async function launch(name: string, prepare?: (home: string) => void, knownHost 
   await git(repo, ['add', '.'])
   await git(repo, ['commit', '-q', '-m', 'Начало'])
   await git(repo, ['remote', 'add', 'origin', server!.url(bare)])
-  writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo] }))
+  writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo], language: 'ru' }))
   const { SSH_AUTH_SOCK: _agent, ...env } = process.env
   const app = await electron.launch({
     args: ['out/main/index.js', `--user-data-dir=${userData}`, '--use-mock-keychain'],

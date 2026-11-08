@@ -1,4 +1,5 @@
 import { parseRemoteUrl, type ParsedRemote } from './remote-url'
+import { t } from './i18n'
 
 export type AccessIssue =
   | 'no-key'
@@ -30,17 +31,17 @@ export function classifyAccessError(message: string): AccessIssue | null {
 }
 
 export function issueSummary(issue: AccessIssue, host?: string): string {
-  const server = host ?? 'сервер'
+  const server = host ?? t('сервер')
   switch (issue) {
-    case 'no-key': return `Этот компьютер ещё не подключён к ${server}: сервер не принял ни один SSH-ключ.`
-    case 'passphrase': return 'Пароль SSH-ключа не подошёл.'
-    case 'host-unknown': return `Это первое подключение к ${server}, и его нужно подтвердить.`
-    case 'host-changed': return `Ключ сервера ${server} изменился. Это может быть смена оборудования, а может быть подмена.`
-    case 'https-auth': return `Для адреса на ${server} нет сохранённого входа.`
-    case 'no-access': return `У подключённого аккаунта нет доступа к этому репозиторию на ${server}, или адрес неверный.`
-    case 'offline': return `Сервер ${server} недоступен. Проверь интернет: ключи здесь ни при чём.`
-    case 'protected': return 'Сервер отклонил отправку: ветка защищена.'
-    case 'ssh-missing': return 'На компьютере не найден ssh. Установи Git или OpenSSH и повтори.'
+    case 'no-key': return t('Этот компьютер ещё не подключён к {server}: сервер не принял ни один SSH-ключ.', { server })
+    case 'passphrase': return t('Пароль SSH-ключа не подошёл.')
+    case 'host-unknown': return t('Это первое подключение к {server}, и его нужно подтвердить.', { server })
+    case 'host-changed': return t('Ключ сервера {server} изменился. Это может быть смена оборудования, а может быть подмена.', { server })
+    case 'https-auth': return t('Для адреса на {server} нет сохранённого входа.', { server })
+    case 'no-access': return t('У подключённого аккаунта нет доступа к этому репозиторию на {server}, или адрес неверный.', { server })
+    case 'offline': return t('Сервер {server} недоступен. Проверь интернет: ключи здесь ни при чём.', { server })
+    case 'protected': return t('Сервер отклонил отправку: ветка защищена.')
+    case 'ssh-missing': return t('На компьютере не найден ssh. Установи Git или OpenSSH и повтори.')
   }
 }
 

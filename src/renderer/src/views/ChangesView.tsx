@@ -7,6 +7,7 @@ import { ConfirmDialog, useDialogs } from '../components/dialogs'
 import { DiffView } from '../components/DiffView'
 import { Avatar, EmptyState, Icon, Modal } from '../components/ui'
 import { useRepo } from '../store'
+import { t } from '../../../shared/i18n'
 
 const STATE_LETTER: Record<FileState, string> = {
   added: 'A', modified: 'M', deleted: 'D', renamed: 'R', copied: 'C', typechange: 'T', conflicted: '!', untracked: 'U'
@@ -33,7 +34,7 @@ function FileRow({ file, state, staged, active, onSelect, onToggle, onDiscard }:
       <input
         type="checkbox"
         checked={staged}
-        aria-label={staged ? 'Убрать из индекса' : 'Добавить в индекс'}
+        aria-label={staged ? t('Убрать из индекса') : t('Добавить в индекс')}
         onClick={(event) => event.stopPropagation()}
         onChange={onToggle}
       />
@@ -43,7 +44,7 @@ function FileRow({ file, state, staged, active, onSelect, onToggle, onDiscard }:
         {slash > 0 && <span className="muted"> {file.path.slice(0, slash)}</span>}
       </span>
       {onDiscard && (
-        <button className="icon-btn row-action" title="Отменить правки" aria-label="Отменить правки" onClick={(event) => { event.stopPropagation(); onDiscard() }}>
+        <button className="icon-btn row-action" title={t('Отменить правки')} aria-label={t('Отменить правки')} onClick={(event) => { event.stopPropagation(); onDiscard() }}>
           <Icon name="undo" size={14} />
         </button>
       )}
@@ -52,17 +53,17 @@ function FileRow({ file, state, staged, active, onSelect, onToggle, onDiscard }:
 }
 
 const OURS_LABEL: Record<string, string> = {
-  merge: 'Текущая ветка',
-  rebase: 'Новая основа',
-  'cherry-pick': 'Текущая ветка',
-  revert: 'Текущая ветка'
+  merge: t('Текущая ветка'),
+  rebase: t('Новая основа'),
+  'cherry-pick': t('Текущая ветка'),
+  revert: t('Текущая ветка')
 }
 
 const THEIRS_LABEL: Record<string, string> = {
-  merge: 'Вливаемая ветка',
-  rebase: 'Твой коммит',
-  'cherry-pick': 'Переносимый коммит',
-  revert: 'Отменяемый коммит'
+  merge: t('Вливаемая ветка'),
+  rebase: t('Твой коммит'),
+  'cherry-pick': t('Переносимый коммит'),
+  revert: t('Отменяемый коммит')
 }
 
 function WorktreeConflictPane({ conflict, operation, onResolved }: {
@@ -77,8 +78,8 @@ function WorktreeConflictPane({ conflict, operation, onResolved }: {
       <ConflictEditor
         file={conflict}
         mergedText={conflict.mergedContent}
-        oursLabel={OURS_LABEL[operation ?? ''] ?? 'Наша версия'}
-        theirsLabel={THEIRS_LABEL[operation ?? ''] ?? 'Их версия'}
+        oursLabel={OURS_LABEL[operation ?? ''] ?? t('Наша версия')}
+        theirsLabel={THEIRS_LABEL[operation ?? ''] ?? t('Их версия')}
         initial={null}
         onChange={setAnswer}
       />
@@ -86,12 +87,12 @@ function WorktreeConflictPane({ conflict, operation, onResolved }: {
         <button
           className="btn btn-primary"
           disabled={!answer}
-          onClick={() => void run('Сохраняю решение', async () => {
+          onClick={() => void run(t('Сохраняю решение'), async () => {
             await client.resolveWorktreeConflict(conflict.path, answer!)
             onResolved()
           })}
         >
-          <Icon name="check" size={14} />Отметить решённым
+          <Icon name="check" size={14} />{t('Отметить решённым')}
         </button>
       </div>
     </div>
@@ -105,23 +106,23 @@ function IdentityDialog({ initial, onSaved }: { initial: CommitIdentity | null; 
   const [email, setEmail] = useState(initial?.email ?? '')
   const save = (): void => {
     close()
-    void run('Сохраняю автора', async () => {
+    void run(t('Сохраняю автора'), async () => {
       await client.setIdentity({ name, email })
       onSaved(await client.readIdentity())
     })
   }
   return (
     <Modal
-      title="Автор коммитов"
+      title={t('Автор коммитов')}
       onClose={close}
       footer={<>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
-        <button className="btn btn-primary" disabled={!name.trim() || !email.trim()} onClick={save}>Сохранить</button>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
+        <button className="btn btn-primary" disabled={!name.trim() || !email.trim()} onClick={save}>{t('Сохранить')}</button>
       </>}
     >
-      <label className="field"><span>Имя</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label className="field"><span>{t('Имя')}</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
       <label className="field"><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-      <p className="hint">Настройка действует только в этом репозитории. Имя и email попадут в новые коммиты, а SSH-ключ на них не влияет.</p>
+      <p className="hint">{t('Настройка действует только в этом репозитории. Имя и email попадут в новые коммиты, а SSH-ключ на них не влияет.')}</p>
     </Modal>
   )
 }
@@ -188,25 +189,25 @@ export function ChangesView(): ReactNode {
     if (!selection || selection.untracked) return null
     const patch = buildFilePatch(file, [index])
     if (selection.staged) {
-      return <button className="btn btn-small" onClick={() => hunkAction('Убираю кусок', () => client.applyPatch(patch, { cached: true, reverse: true }))}>Убрать из индекса</button>
+      return <button className="btn btn-small" onClick={() => hunkAction(t('Убираю кусок'), () => client.applyPatch(patch, { cached: true, reverse: true }))}>{t('Убрать из индекса')}</button>
     }
     return (
       <>
-        <button className="btn btn-small" onClick={() => hunkAction('Добавляю кусок', () => client.applyPatch(patch, { cached: true }))}>В индекс</button>
+        <button className="btn btn-small" onClick={() => hunkAction(t('Добавляю кусок'), () => client.applyPatch(patch, { cached: true }))}>{t('В индекс')}</button>
         <button className="btn btn-small btn-ghost" onClick={() => show(<ConfirmDialog
-          title="Отменить кусок правок"
+          title={t('Отменить кусок правок')}
           danger
-          confirmLabel="Отменить правки"
-          body="Эти строки вернутся к версии из индекса. Это нельзя отменить."
-          onConfirm={() => hunkAction('Отменяю кусок', () => client.applyPatch(patch, { reverse: true }))}
-        />)}>Отменить</button>
+          confirmLabel={t('Отменить правки')}
+          body={t('Эти строки вернутся к версии из индекса. Это нельзя отменить.')}
+          onConfirm={() => hunkAction(t('Отменяю кусок'), () => client.applyPatch(patch, { reverse: true }))}
+        />)}>{t('Отменить')}</button>
       </>
     )
   }
 
   const doCommit = async (thenPush: boolean): Promise<void> => {
     const branch = status?.head
-    const committed = await run('Создаю коммит', async () => {
+    const committed = await run(t('Создаю коммит'), async () => {
       await client.commit({ message, amend })
       return true
     })
@@ -214,25 +215,25 @@ export function ChangesView(): ReactNode {
     setMessage('')
     setAmend(false)
     if (!thenPush || !branch) {
-      toast('success', 'Коммит создан')
+      toast('success', t('Коммит создан'))
       return
     }
     // A separate step, so that retrying after a refused connection pushes again instead of committing again.
-    const pushed = await run('Отправляю', async () => {
+    const pushed = await run(t('Отправляю'), async () => {
       await client.push(branch)
       return true
     })
-    if (pushed) toast('success', 'Коммит создан и отправлен')
+    if (pushed) toast('success', t('Коммит создан и отправлен'))
   }
 
   const discard = (file: StatusFile): void => {
     const untracked = file.unstaged === 'untracked'
     show(<ConfirmDialog
-      title="Отменить правки"
+      title={t('Отменить правки')}
       danger
-      confirmLabel={untracked ? 'Удалить файл' : 'Отменить правки'}
-      body={<>{untracked ? 'Файл будет удалён' : 'Правки будут потеряны'}: <code>{file.path}</code>. Это нельзя отменить.</>}
-      onConfirm={() => void run('Отменяю правки', () => client.discardFiles(untracked ? [] : [file.path], untracked ? [file.path] : []))}
+      confirmLabel={untracked ? t('Удалить файл') : t('Отменить правки')}
+      body={<>{untracked ? t('Файл будет удалён') : t('Правки будут потеряны')}: <code>{file.path}</code>{t('. Это нельзя отменить.')}</>}
+      onConfirm={() => void run(t('Отменяю правки'), () => client.discardFiles(untracked ? [] : [file.path], untracked ? [file.path] : []))}
     />)
   }
 
@@ -245,17 +246,17 @@ export function ChangesView(): ReactNode {
             <Icon name="warning" />
             <div>
               {conflicts.length
-                ? `Идёт операция ${status.operation}. Осталось разрешить файлов: ${conflicts.length}.`
-                : `Идёт операция ${status.operation}. Конфликтов больше нет, её можно завершить.`}
+                ? t('Идёт операция {operation}. Осталось разрешить файлов: {conflictsCount}.', { operation: status.operation, conflictsCount: conflicts.length })
+                : t('Идёт операция {operation}. Конфликтов больше нет, её можно завершить.', { operation: status.operation })}
               <div className="banner-actions">
                 {status.operation !== 'bisect' && (
                   <button
                     className="btn btn-primary btn-small"
                     disabled={conflicts.length > 0}
-                    onClick={() => void run('Завершаю операцию', () => client.continueOperation(status.operation!))}
-                  >Завершить</button>
+                    onClick={() => void run(t('Завершаю операцию'), () => client.continueOperation(status.operation!))}
+                  >{t('Завершить')}</button>
                 )}
-                <button className="btn btn-ghost btn-small" onClick={() => void run('Отменяю операцию', () => client.abortOperation(status.operation!))}>Отменить операцию</button>
+                <button className="btn btn-ghost btn-small" onClick={() => void run(t('Отменяю операцию'), () => client.abortOperation(status.operation!))}>{t('Отменить операцию')}</button>
               </div>
             </div>
           </div>
@@ -263,7 +264,7 @@ export function ChangesView(): ReactNode {
         <div className="file-list">
           {conflicts.length > 0 && (
             <>
-              <header className="list-head"><span>Конфликты</span><span className="count">{conflicts.length}</span></header>
+              <header className="list-head"><span>{t('Конфликты')}</span><span className="count">{conflicts.length}</span></header>
               {conflicts.map((conflict) => (
                 <div key={conflict.path} className={`file-row ${activeConflict === conflict.path ? 'active' : ''}`} onClick={() => setActiveConflict(conflict.path)}>
                   <span className="file-badge file-conflicted">!</span>
@@ -273,8 +274,8 @@ export function ChangesView(): ReactNode {
             </>
           )}
           <header className="list-head">
-            <span>В индексе</span><span className="count">{stagedFiles.length}</span>
-            {stagedFiles.length > 0 && <button className="link" onClick={() => void run('Убираю из индекса', () => client.unstageFiles(stagedFiles.map((file) => file.path)))}>Убрать все</button>}
+            <span>{t('В индексе')}</span><span className="count">{stagedFiles.length}</span>
+            {stagedFiles.length > 0 && <button className="link" onClick={() => void run(t('Убираю из индекса'), () => client.unstageFiles(stagedFiles.map((file) => file.path)))}>{t('Убрать все')}</button>}
           </header>
           {stagedFiles.map((file) => (
             <FileRow
@@ -284,12 +285,12 @@ export function ChangesView(): ReactNode {
               staged
               active={selection?.path === file.path && selection.staged}
               onSelect={() => setSelection({ path: file.path, staged: true, untracked: false })}
-              onToggle={() => void run('Убираю из индекса', () => client.unstageFiles([file.path]))}
+              onToggle={() => void run(t('Убираю из индекса'), () => client.unstageFiles([file.path]))}
             />
           ))}
           <header className="list-head">
-            <span>Изменения</span><span className="count">{unstagedFiles.length}</span>
-            {unstagedFiles.length > 0 && <button className="link" onClick={() => void run('Добавляю в индекс', () => client.stageAll())}>Добавить все</button>}
+            <span>{t('Изменения')}</span><span className="count">{unstagedFiles.length}</span>
+            {unstagedFiles.length > 0 && <button className="link" onClick={() => void run(t('Добавляю в индекс'), () => client.stageAll())}>{t('Добавить все')}</button>}
           </header>
           {unstagedFiles.map((file) => (
             <FileRow
@@ -299,32 +300,32 @@ export function ChangesView(): ReactNode {
               staged={false}
               active={selection?.path === file.path && !selection.staged}
               onSelect={() => setSelection({ path: file.path, staged: false, untracked: file.unstaged === 'untracked' })}
-              onToggle={() => void run('Добавляю в индекс', () => client.stageFiles([file.path]))}
+              onToggle={() => void run(t('Добавляю в индекс'), () => client.stageFiles([file.path]))}
               onDiscard={() => discard(file)}
             />
           ))}
         </div>
         <div className="commit-box">
-          <button className="commit-author" title="Изменить для этого репозитория" onClick={editIdentity}>
+          <button className="commit-author" title={t('Изменить для этого репозитория')} onClick={editIdentity}>
             {identity?.name && identity.email
               ? <><Avatar name={identity.name} email={identity.email} size={16} /><span className="truncate">{identity.name} &lt;{identity.email}&gt;</span></>
-              : <span className="danger-text">Укажи автора коммитов</span>}
+              : <span className="danger-text">{t('Укажи автора коммитов')}</span>}
           </button>
           <textarea
             rows={4}
             value={message}
-            placeholder="Сообщение коммита"
-            aria-label="Сообщение коммита"
+            placeholder={t('Сообщение коммита')}
+            aria-label={t('Сообщение коммита')}
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && canCommit) void doCommit(false) }}
           />
           <label className="check">
             <input type="checkbox" checked={amend} onChange={(event) => setAmend(event.target.checked)} />
-            <span>Дополнить последний коммит</span>
+            <span>{t('Дополнить последний коммит')}</span>
           </label>
           <div className="commit-actions">
-            <button className="btn btn-primary" disabled={!canCommit} onClick={() => void doCommit(false)}><Icon name="check" size={14} />Коммит</button>
-            <button className="btn" disabled={!canCommit || !status?.head} onClick={() => void doCommit(true)}><Icon name="push" size={14} />Коммит и пуш</button>
+            <button className="btn btn-primary" disabled={!canCommit} onClick={() => void doCommit(false)}><Icon name="check" size={14} />{t('Коммит')}</button>
+            <button className="btn" disabled={!canCommit || !status?.head} onClick={() => void doCommit(true)}><Icon name="push" size={14} />{t('Коммит и пуш')}</button>
           </div>
         </div>
       </div>
@@ -336,7 +337,7 @@ export function ChangesView(): ReactNode {
             operation={status?.operation}
             onResolved={() => setRefreshCount((count) => count + 1)}
           />
-        ) : selection ? <DiffView diff={diff} actions={{ hunk: hunkControls }} /> : <EmptyState icon="changes" title={files.length ? 'Выбери файл' : 'Рабочая папка чистая'}>{files.length ? 'Его изменения появятся здесь.' : 'Незакоммиченных правок нет.'}</EmptyState>}
+        ) : selection ? <DiffView diff={diff} actions={{ hunk: hunkControls }} /> : <EmptyState icon="changes" title={files.length ? t('Выбери файл') : t('Рабочая папка чистая')}>{files.length ? t('Его изменения появятся здесь.') : t('Незакоммиченных правок нет.')}</EmptyState>}
       </div>
     </div>
   )

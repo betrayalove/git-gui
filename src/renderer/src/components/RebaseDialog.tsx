@@ -5,14 +5,15 @@ import { useRepo } from '../store'
 import { ReviewDialog, useDialogs } from './dialogs'
 import { ResultHistory } from './ResultHistory'
 import { Avatar, Icon, Modal } from './ui'
+import { t } from '../../../shared/i18n'
 
 const PREVIEW_DELAY_MS = 400
 
 const ACTIONS: { value: TodoAction; label: string }[] = [
-  { value: 'pick', label: 'Оставить' },
-  { value: 'squash', label: 'Объединить с предыдущим' },
-  { value: 'fixup', label: 'Объединить, без сообщения' },
-  { value: 'drop', label: 'Удалить' }
+  { value: 'pick', label: t('Оставить') },
+  { value: 'squash', label: t('Объединить с предыдущим') },
+  { value: 'fixup', label: t('Объединить, без сообщения') },
+  { value: 'drop', label: t('Удалить') }
 ]
 
 interface Step {
@@ -64,7 +65,7 @@ export function RebaseDialog({ branch, initialTarget }: { branch: string; initia
     if (!range || range.upToDate || range.hasMerges || !steps.length) return null
     return {
       sequence: { base: range.base, tip: range.tip, onto: range.onto, todo: steps },
-      description: `Перенос ветки ${branch} на ${target}`
+      description: t('Перенос ветки {branch} на {target}', { branch, target })
     }
   }, [branch, range, steps, target])
 
@@ -103,70 +104,70 @@ export function RebaseDialog({ branch, initialTarget }: { branch: string; initia
 
   return (
     <Modal
-      title={`Перенести ветку ${branch}`}
+      title={t('Перенести ветку {branch}', { branch })}
       extraWide
       onClose={close}
       footer={<>
-        <span className="foot-note">Репозиторий не изменится, пока ты не применишь правку. Её можно будет отменить.</span>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
+        <span className="foot-note">{t('Репозиторий не изменится, пока ты не применишь правку. Её можно будет отменить.')}</span>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
         <button className="btn btn-primary" disabled={!plan || invalid || Boolean(previewError)} onClick={() => plan && show(<ReviewDialog plan={plan} />)}>
-          {conflicts ? 'Разрешить конфликты' : 'Дальше'}
+          {conflicts ? t('Разрешить конфликты') : t('Дальше')}
         </button>
       </>}
     >
       <div className="rebase-target">
         <label className="field">
-          <span>Поверх чего</span>
+          <span>{t('Поверх чего')}</span>
           <select value={target} onChange={(event) => setTarget(event.target.value)}>
             {targets.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </label>
         {range && !range.upToDate && (
           <p className="hint">
-            {plural(range.commits.length, 'коммит', 'коммита', 'коммитов')} ветки {branch} встанут поверх {target}
-            {range.base ? `, начиная от общего коммита ${shortSha(range.base)}` : ''}.
+            {plural(range.commits.length, 'коммит', 'коммита', 'коммитов')} {t('ветки')} {branch} {t('встанут поверх')} {target}
+            {range.base ? t(', начиная от общего коммита {value}', { value: shortSha(range.base) }) : ''}.
           </p>
         )}
       </div>
       {error && <div className="banner danger"><Icon name="warning" />{error}</div>}
-      {range?.upToDate && <div className="banner"><Icon name="check" />Ветка {branch} уже начинается от {target}, переносить нечего.</div>}
+      {range?.upToDate && <div className="banner"><Icon name="check" />{t('Ветка')} {branch} {t('уже начинается от')} {target}{t(', переносить нечего.')}</div>}
       {range?.hasMerges && (
-        <div className="banner warn"><Icon name="warning" />В ветке есть merge-коммиты. Их нельзя пересоздать точно, поэтому перенос пока недоступен. Слей ветку через merge или собери её без merge-коммитов.</div>
+        <div className="banner warn"><Icon name="warning" />{t('В ветке есть merge-коммиты. Их нельзя пересоздать точно, поэтому перенос пока недоступен. Слей ветку через merge или собери её без merge-коммитов.')}</div>
       )}
       {range && !range.upToDate && !range.hasMerges && (
         <div className="rebase-layout">
           <div className="rebase-steps">
-            <h4>Коммиты, новые сверху</h4>
+            <h4>{t('Коммиты, новые сверху')}</h4>
             <ol>
               {shown.map(({ step, index }) => {
                 const commit = bySha.get(step.sha)!
                 return (
                   <li key={step.sha} className={`rebase-step action-${step.action}`}>
                     <span className="rebase-move">
-                      <button className="icon-btn" aria-label="Выше" title="Выше" disabled={index === steps.length - 1} onClick={() => move(index, 1)}><Icon name="chevron" size={12} style={{ transform: 'rotate(-90deg)' }} /></button>
-                      <button className="icon-btn" aria-label="Ниже" title="Ниже" disabled={index === 0} onClick={() => move(index, -1)}><Icon name="chevron" size={12} style={{ transform: 'rotate(90deg)' }} /></button>
+                      <button className="icon-btn" aria-label={t('Выше')} title={t('Выше')} disabled={index === steps.length - 1} onClick={() => move(index, 1)}><Icon name="chevron" size={12} style={{ transform: 'rotate(-90deg)' }} /></button>
+                      <button className="icon-btn" aria-label={t('Ниже')} title={t('Ниже')} disabled={index === 0} onClick={() => move(index, -1)}><Icon name="chevron" size={12} style={{ transform: 'rotate(90deg)' }} /></button>
                     </span>
                     <Avatar name={commit.authorName} email={commit.authorEmail} size={18} />
                     <span className="rebase-subject">
                       <span className="truncate">{commit.subject}</span>
                       <span className="muted">{shortSha(commit.sha)} · {formatRelative(commit.authorDate)}</span>
                     </span>
-                    <select value={step.action} aria-label={`Что сделать с «${commit.subject}»`} onChange={(event) => setActionAt(index, event.target.value as TodoAction)}>
+                    <select value={step.action} aria-label={t('Что сделать с «{subject}»', { subject: commit.subject })} onChange={(event) => setActionAt(index, event.target.value as TodoAction)}>
                       {ACTIONS.map((action) => <option key={action.value} value={action.value}>{action.label}</option>)}
                     </select>
                   </li>
                 )
               })}
             </ol>
-            {invalid && <p className="hint danger-text">Самый нижний оставшийся коммит не с чем объединить.</p>}
+            {invalid && <p className="hint danger-text">{t('Самый нижний оставшийся коммит не с чем объединить.')}</p>}
           </div>
           <div className="rebase-result">
             {previewError && <div className="banner danger"><Icon name="warning" />{previewError}</div>}
-            {!preview && !previewError && plan && !invalid && <div className="diff-loading">Строю результат…</div>}
+            {!preview && !previewError && plan && !invalid && <div className="diff-loading">{t('Строю результат…')}</div>}
             {preview && conflicts > 0 && (
               <div className="banner warn">
                 <Icon name="warning" />
-                Конфликт в коммите «{preview.conflicts[0].subject}». На следующем шаге можно выбрать, что должно получиться, а можно поменять порядок здесь.
+                {t('Конфликт в коммите «')}{preview.conflicts[0].subject}{t('». На следующем шаге можно выбрать, что должно получиться, а можно поменять порядок здесь.')}
               </div>
             )}
             {preview?.blockers.map((text) => <div className="banner danger" key={text}><Icon name="warning" />{text}</div>)}

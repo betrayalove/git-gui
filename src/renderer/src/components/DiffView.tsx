@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import type { DiffResult, FileDiff } from '../../../shared/types'
 import { Icon } from './ui'
+import { t } from '../../../shared/i18n'
 
 const MAX_LINES_PER_FILE = 1500
 
@@ -49,8 +50,8 @@ function FileBlock({ file, defaultOpen, actions, highlight }: { file: FileDiff; 
       </button>
       {open && (
         <div className="diff-body">
-          {file.binary && <div className="diff-note">Бинарный файл</div>}
-          {!file.binary && !file.hunks.length && <div className="diff-note">Нет изменений в содержимом</div>}
+          {file.binary && <div className="diff-note">{t('Бинарный файл')}</div>}
+          {!file.binary && !file.hunks.length && <div className="diff-note">{t('Нет изменений в содержимом')}</div>}
           {file.hunks.map((hunk, hunkIndex) => {
             if (!showAll && shown >= MAX_LINES_PER_FILE) return null
             return (
@@ -75,7 +76,7 @@ function FileBlock({ file, defaultOpen, actions, highlight }: { file: FileDiff; 
           })}
           {!showAll && total > MAX_LINES_PER_FILE && (
             <button className="btn btn-ghost diff-more" onClick={() => setShowAll(true)}>
-              Показать все строки: {total}
+              {t('Показать все строки:')} {total}
             </button>
           )}
         </div>
@@ -85,11 +86,11 @@ function FileBlock({ file, defaultOpen, actions, highlight }: { file: FileDiff; 
 }
 
 export function DiffView({ diff, actions, highlight }: { diff: DiffResult | null; actions?: DiffActions; highlight?: string }): ReactNode {
-  if (!diff) return <div className="diff-loading">Загружаю изменения…</div>
-  if (!diff.files.length) return <div className="diff-note">Изменений нет</div>
+  if (!diff) return <div className="diff-loading">{t('Загружаю изменения…')}</div>
+  if (!diff.files.length) return <div className="diff-note">{t('Изменений нет')}</div>
   return (
     <div className="diff">
-      {diff.truncated && <div className="banner warn">Изменения слишком большие и показаны не полностью.</div>}
+      {diff.truncated && <div className="banner warn">{t('Изменения слишком большие и показаны не полностью.')}</div>}
       {diff.files.map((file, index) => (
         <FileBlock key={`${file.path}-${index}`} file={file} defaultOpen={diff.files.length <= 20} actions={actions} highlight={highlight} />
       ))}

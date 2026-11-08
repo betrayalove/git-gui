@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { LfsInfo, Submodule, Worktree } from '../shared/types'
 import { git, gitLine, runGit } from './git'
+import { t } from '../shared/i18n'
 
 /** All checkouts of this repository. The first is the main one. */
 export async function listWorktrees(cwd: string): Promise<Worktree[]> {
@@ -31,7 +32,7 @@ function samePath(a: string, b: string): boolean {
 /** Checks out a branch in a new folder. With `newBranch` the branch is created from `from`. */
 export async function addWorktree(cwd: string, options: { path: string; branch: string; newBranch?: boolean; from?: string }): Promise<void> {
   const { code } = await runGit(cwd, ['check-ref-format', '--branch', options.branch], { okCodes: [128] })
-  if (code !== 0 || options.branch.startsWith('-')) throw new Error(`Недопустимое имя ветки: ${options.branch}`)
+  if (code !== 0 || options.branch.startsWith('-')) throw new Error(t('Недопустимое имя ветки: {branch}', { branch: options.branch }))
   const args = options.newBranch
     ? ['worktree', 'add', '-b', options.branch, '--', options.path, options.from ?? 'HEAD']
     : ['worktree', 'add', '--', options.path, options.branch]
@@ -69,7 +70,7 @@ export async function listSubmodules(cwd: string): Promise<Submodule[]> {
   return raw.split('\n').filter(Boolean).map((line) => {
     // The path may hold spaces. Git adds the description in brackets only for a downloaded submodule.
     const match = /^(.)([0-9a-f]+) (.+?)(?: \((.*)\))?$/.exec(line)
-    if (!match) throw new Error(`Не удалось разобрать состояние submodule: ${line}`)
+    if (!match) throw new Error(t('Не удалось разобрать состояние submodule: {line}', { line }))
     return { path: match[3], sha: match[2], state: SUBMODULE_STATE[match[1]] ?? 'ok', url: urls.get(match[3]) ?? null, describe: match[4] ?? null }
   })
 }
@@ -105,7 +106,7 @@ export async function lfsPull(cwd: string): Promise<void> {
 
 /** Stores files matching `pattern` in LFS from now on. Existing history is not changed. */
 export async function lfsTrack(cwd: string, pattern: string): Promise<void> {
-  if (!pattern.trim() || pattern.startsWith('-')) throw new Error(`Недопустимая маска: ${pattern}`)
+  if (!pattern.trim() || pattern.startsWith('-')) throw new Error(t('Недопустимая маска: {pattern}', { pattern }))
   const root = await gitLine(cwd, ['rev-parse', '--show-toplevel'])
   await git(root, ['lfs', 'track', '--', pattern.trim()], LFS_OPTIONS)
 }

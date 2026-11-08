@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright'
@@ -64,8 +64,13 @@ describe('History tools', () => {
     await commit(other, 'docs/guide.md', 'guide\n', 'Colleague writes a guide')
     await git(other, ['push', '-q', 'origin', 'main'])
 
-    writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo], updateChecks: false }))
-    app = await electron.launch({ args: ['out/main/index.js', `--user-data-dir=${userData}`, '--use-mock-keychain'], env: { ...process.env, ELECTRON_RENDERER_URL: '' } })
+    writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo], updateChecks: false, language: 'ru' }))
+    // Without colorScheme: null, Playwright pretends the system is light and the app's theme setting is never seen.
+    app = await electron.launch({
+      args: ['out/main/index.js', `--user-data-dir=${userData}`, '--use-mock-keychain'],
+      env: { ...process.env, ELECTRON_RENDERER_URL: '' },
+      colorScheme: null
+    })
     // The folder picker is a system window that tests cannot click.
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [folder] })) as typeof dialog.showOpenDialog
@@ -158,5 +163,35 @@ describe('History tools', () => {
     await page.locator('.side-section', { hasText: 'Рабочие копии' }).locator('.side-item', { hasText: 'hotfix' }).click()
     await page.locator('.repo-switch', { hasText: 'project-hotfix' }).waitFor()
     await page.locator('.branch-name', { hasText: 'hotfix' }).waitFor()
+  })
+
+  it('switches the theme and the language, keeping the open repository', async () => {
+    const prefersLight = (): Promise<boolean> => page.evaluate(() => matchMedia('(prefers-color-scheme: light)').matches)
+    await page.getByRole('button', { name: 'Настройки' }).click()
+    await page.getByRole('button', { name: 'Светлая' }).click()
+    await expect.poll(prefersLight).toBe(true)
+    await page.getByRole('button', { name: 'Тёмная' }).click()
+    await expect.poll(prefersLight).toBe(false)
+
+    await page.getByRole('button', { name: 'English' }).click()
+    await page.locator('.side-nav button', { hasText: 'History' }).waitFor()
+    await page.locator('.repo-switch', { hasText: 'project-hotfix' }).waitFor()
+    // Returns the Russian text left on screen with a little context, so a failure names it.
+    const russianLeft = (): Promise<string | null> => page.evaluate(() => {
+      const text = document.body.innerText.replace('Русский', '')
+      const at = text.search(/[А-Яа-яЁё]/)
+      return at === -1 ? null : text.slice(Math.max(0, at - 30), at + 40)
+    })
+    for (const view of ['History', 'Changes', 'Files', 'Stash', 'Publishing', 'Journal']) {
+      await page.locator('.side-nav button', { hasText: view }).click()
+      await expect.poll(russianLeft).toBeNull()
+    }
+    await page.locator('.side-nav button', { hasText: 'History' }).click()
+    await page.getByRole('button', { name: 'Settings' }).click()
+    await expect.poll(russianLeft).toBeNull()
+    expect(JSON.parse(readFileSync(join(userData, 'state.json'), 'utf8'))).toMatchObject({ language: 'en', theme: 'dark' })
+
+    await page.getByRole('button', { name: 'Русский' }).click()
+    await page.locator('.side-nav button', { hasText: 'История' }).waitFor()
   })
 })

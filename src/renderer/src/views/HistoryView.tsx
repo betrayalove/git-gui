@@ -11,18 +11,19 @@ import { GraphCell, graphWidth, ROW_HEIGHT } from '../components/Graph'
 import { Avatar, ContextMenu, EmptyState, Icon, type MenuItem } from '../components/ui'
 import { formatFull, formatRelative, shortSha } from '../format'
 import { useRepo } from '../store'
+import { t } from '../../../shared/i18n'
 
 const OVERSCAN = 12
 const MAX_LANES = 12
 const MAX_CHIPS = 3
 
 const STATE_LABEL: Record<RowDraftState, string> = {
-  edited: 'изменён',
-  moved: 'перемещён',
-  dropped: 'удалён',
-  squashed: 'объединён',
-  fixup: 'объединён',
-  split: 'разделён'
+  edited: t('изменён'),
+  moved: t('перемещён'),
+  dropped: t('удалён'),
+  squashed: t('объединён'),
+  fixup: t('объединён'),
+  split: t('разделён')
 }
 
 function RefChip({ info }: { info: RefInfo }): ReactNode {
@@ -95,7 +96,7 @@ export function HistoryView(): ReactNode {
     if (!focus || !scroller.current) return
     const index = filtered.findIndex((commit) => commit.sha === focus.sha)
     if (index === -1) {
-      toast('info', 'Этот коммит дальше загруженной истории. Загрузи её внизу списка.')
+      toast('info', t('Этот коммит дальше загруженной истории. Загрузи её внизу списка.'))
       return
     }
     const element = scroller.current
@@ -131,7 +132,7 @@ export function HistoryView(): ReactNode {
   const sequenceFor = (sha: string): DraftSequence | null => {
     if (draft.sequence?.todo.some((item) => item.sha === sha)) return draft.sequence
     if (draft.sequence && isSequenceChanged(commits, draft.sequence)) {
-      toast('info', `В черновике уже перестраивается ветка ${draft.sequence.branch}. Сначала примени или сбрось её.`)
+      toast('info', t('В черновике уже перестраивается ветка {branch}. Сначала примени или сбрось её.', { branch: draft.sequence.branch }))
       return null
     }
     const branches = (snapshot?.refs ?? [])
@@ -140,7 +141,7 @@ export function HistoryView(): ReactNode {
     for (const branch of branches) {
       if (linearChain(commits, branch.sha)?.chain.includes(sha)) return startSequence(commits, branch.name, branch.sha)
     }
-    toast('info', 'Этот коммит нельзя переставлять: он не входит в линейный участок локальной ветки.')
+    toast('info', t('Этот коммит нельзя переставлять: он не входит в линейный участок локальной ветки.'))
     return null
   }
 
@@ -215,32 +216,32 @@ export function HistoryView(): ReactNode {
     const canMeld = position > 0 && editableRun.slice(0, position).some((item) => item.action !== 'drop')
     const items: MenuItem[] = [
       {
-        label: action === 'drop' ? 'Вернуть коммит' : 'Удалить из истории',
+        label: action === 'drop' ? t('Вернуть коммит') : t('Удалить из истории'),
         icon: 'trash',
         danger: action !== 'drop',
         run: () => changeSequence(commit.sha, (sequence) => setAction(sequence, commit.sha, action === 'drop' ? 'pick' : 'drop'))
       },
       {
-        label: 'Объединить с предыдущим',
+        label: t('Объединить с предыдущим'),
         icon: 'branch',
         disabled: !canMeld,
         run: () => changeSequence(commit.sha, (sequence) => setAction(sequence, commit.sha, 'squash'))
       },
       {
-        label: 'Объединить, отбросив сообщение',
+        label: t('Объединить, отбросив сообщение'),
         disabled: !canMeld,
         run: () => changeSequence(commit.sha, (sequence) => setAction(sequence, commit.sha, 'fixup'))
       },
       ...(action === 'squash' || action === 'fixup' ? [{
-        label: 'Отменить объединение',
+        label: t('Отменить объединение'),
         run: () => changeSequence(commit.sha, (sequence) => setAction(sequence, commit.sha, 'pick'))
       }] : []),
       commit.draftStates.includes('split') ? {
-        label: 'Отменить разделение',
+        label: t('Отменить разделение'),
         icon: 'split',
         run: () => changeSequence(commit.sha, (sequence) => setSplit(sequence, commit.sha, undefined))
       } : {
-        label: 'Разделить коммит…',
+        label: t('Разделить коммит…'),
         icon: 'split',
         disabled: commit.parents.length > 1 || !editableRun.length,
         run: () => show(<SplitCommitDialog
@@ -258,48 +259,48 @@ export function HistoryView(): ReactNode {
       },
       { separator: true },
       {
-        label: headIndex >= 0 ? `Снять ${headChain.length - headIndex} и опубликовать позже…` : 'Снять и опубликовать позже…',
+        label: headIndex >= 0 ? t('Снять {value} и опубликовать позже…', { value: headChain.length - headIndex }) : t('Снять и опубликовать позже…'),
         icon: 'schedule',
         disabled: headIndex < 0 || commit.parents.length !== 1,
         run: () => show(<ScheduleDialog branch={head!} count={headChain.length - headIndex} />)
       },
       { separator: true },
       {
-        label: 'Создать ветку здесь…',
+        label: t('Создать ветку здесь…'),
         icon: 'branch',
-        run: () => show(<PromptDialog title="Новая ветка" label="Имя ветки" confirmLabel="Создать и перейти" onSubmit={(name) => {
-          void run('Создаю ветку', () => client.createBranch(name, commit.sha, true))
+        run: () => show(<PromptDialog title={t('Новая ветка')} label={t('Имя ветки')} confirmLabel={t('Создать и перейти')} onSubmit={(name) => {
+          void run(t('Создаю ветку'), () => client.createBranch(name, commit.sha, true))
         }} />)
       },
       {
-        label: 'Создать тег здесь…',
+        label: t('Создать тег здесь…'),
         icon: 'tag',
-        run: () => show(<PromptDialog title="Новый тег" label="Имя тега" confirmLabel="Создать" onSubmit={(name) => {
-          void run('Создаю тег', () => client.createTag(name, commit.sha))
+        run: () => show(<PromptDialog title={t('Новый тег')} label={t('Имя тега')} confirmLabel={t('Создать')} onSubmit={(name) => {
+          void run(t('Создаю тег'), () => client.createTag(name, commit.sha))
         }} />)
       },
-      { label: 'Перейти на этот коммит', run: () => void run('Переключаюсь', () => client.checkoutCommit(commit.sha)) },
-      { label: 'Cherry-pick в текущую ветку', run: () => void run('Cherry-pick', () => client.cherryPick(commit.sha)) },
-      { label: 'Создать обратный коммит (revert)', run: () => void run('Revert', () => client.revertCommit(commit.sha)) },
+      { label: t('Перейти на этот коммит'), run: () => void run(t('Переключаюсь'), () => client.checkoutCommit(commit.sha)) },
+      { label: t('Cherry-pick в текущую ветку'), run: () => void run('Cherry-pick', () => client.cherryPick(commit.sha)) },
+      { label: t('Создать обратный коммит (revert)'), run: () => void run('Revert', () => client.revertCommit(commit.sha)) },
       {
-        label: 'Сбросить ветку сюда…',
+        label: t('Сбросить ветку сюда…'),
         danger: true,
         run: () => show(<ConfirmDialog
-          title="Сбросить ветку"
+          title={t('Сбросить ветку')}
           danger
-          confirmLabel="Сбросить, потеряв правки"
-          body={<>Ветка <b>{head ?? 'HEAD'}</b> встанет на <code>{shortSha(commit.sha)}</code>. Незакоммиченные правки будут потеряны. Коммиты можно найти через reflog.</>}
-          onConfirm={() => void run('Сбрасываю', () => client.resetTo(commit.sha, 'hard'))}
+          confirmLabel={t('Сбросить, потеряв правки')}
+          body={<>{t('Ветка')} <b>{head ?? 'HEAD'}</b> {t('встанет на')} <code>{shortSha(commit.sha)}</code>{t('. Незакоммиченные правки будут потеряны. Коммиты можно найти через reflog.')}</>}
+          onConfirm={() => void run(t('Сбрасываю'), () => client.resetTo(commit.sha, 'hard'))}
         />)
       },
       { separator: true },
-      { label: 'Копировать SHA', run: () => void appApi.copyText(commit.sha) }
+      { label: t('Копировать SHA'), run: () => void appApi.copyText(commit.sha) }
     ]
     setMenu({ x: event.clientX, y: event.clientY, items })
   }
 
   if (!commits.length) {
-    return <EmptyState icon="history" title="Коммитов пока нет">Создай первый коммит на вкладке «Изменения».</EmptyState>
+    return <EmptyState icon="history" title={t('Коммитов пока нет')}>{t('Создай первый коммит на вкладке «Изменения».')}</EmptyState>
   }
 
   const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
@@ -313,9 +314,9 @@ export function HistoryView(): ReactNode {
   return (
     <div className="history">
       <div className="history-head" style={{ paddingLeft: width + 26 }}>
-        <span className="col-subject">Сообщение</span>
-        <span className="col-author">Автор</span>
-        <span className="col-date">Дата</span>
+        <span className="col-subject">{t('Сообщение')}</span>
+        <span className="col-author">{t('Автор')}</span>
+        <span className="col-date">{t('Дата')}</span>
         <span className="col-sha">SHA</span>
       </div>
       <div
@@ -388,19 +389,19 @@ export function HistoryView(): ReactNode {
           })}
         </div>
         {hasMore && !query && (
-          <div className="load-more"><button className="btn btn-ghost" onClick={() => void loadMore()}>Загрузить ещё</button></div>
+          <div className="load-more"><button className="btn btn-ghost" onClick={() => void loadMore()}>{t('Загрузить ещё')}</button></div>
         )}
-        {query && searchMode === 'content' && !matches && <div className="diff-loading">Ищу в изменениях…</div>}
+        {query && searchMode === 'content' && !matches && <div className="diff-loading">{t('Ищу в изменениях…')}</div>}
         {query && (searchMode === 'message' || matches) && !filtered.length && !unloaded && (
-          <EmptyState icon="search" title="Ничего не найдено">
-            {searchMode === 'content' ? 'Ни один коммит не добавлял и не удалял строку с этим текстом.' : 'Поиск идёт по сообщению, автору и SHA. Чтобы искать в изменённых строках, нажми { } в поле поиска.'}
+          <EmptyState icon="search" title={t('Ничего не найдено')}>
+            {searchMode === 'content' ? t('Ни один коммит не добавлял и не удалял строку с этим текстом.') : t('Поиск идёт по сообщению, автору и SHA. Чтобы искать в изменённых строках, нажми { } в поле поиска.')}
           </EmptyState>
         )}
         {(unloaded > 0 || matches?.limited) && (
           <div className="load-more">
-            {unloaded > 0 && <span className="muted">Ещё найдено в незагруженной истории: {unloaded}. </span>}
-            {matches?.limited && <span className="muted">Показаны первые совпадения, уточни запрос. </span>}
-            {hasMore && <button className="btn btn-ghost" onClick={() => void loadMore()}>Загрузить ещё</button>}
+            {unloaded > 0 && <span className="muted">{t('Ещё найдено в незагруженной истории:')} {unloaded}. </span>}
+            {matches?.limited && <span className="muted">{t('Показаны первые совпадения, уточни запрос.')} </span>}
+            {hasMore && <button className="btn btn-ghost" onClick={() => void loadMore()}>{t('Загрузить ещё')}</button>}
           </div>
         )}
       </div>

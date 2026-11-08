@@ -5,9 +5,10 @@ import { ConfirmDialog, useDialogs } from '../components/dialogs'
 import { EmptyState, Icon } from '../components/ui'
 import { formatFull, plural } from '../format'
 import { useRepo } from '../store'
+import { t, translateRecord } from '../../../shared/i18n'
 
 const STATE_TEXT: Record<ScheduledPublish['state'], string> = {
-  pending: 'Ждёт', done: 'Опубликовано', failed: 'Ошибка', cancelled: 'Отменено'
+  pending: t('Ждёт'), done: t('Опубликовано'), failed: t('Ошибка'), cancelled: t('Отменено')
 }
 
 /** A publish that ran into a refused connection stays pending and goes out once access works again. */
@@ -25,49 +26,49 @@ export function ScheduleView(): ReactNode {
   })
   if (!schedules.length) {
     return (
-      <EmptyState icon="schedule" title="Запланированных публикаций нет">
-        В истории нажми правой кнопкой на коммит и выбери «Снять и опубликовать позже».
+      <EmptyState icon="schedule" title={t('Запланированных публикаций нет')}>
+        {t('В истории нажми правой кнопкой на коммит и выбери «Снять и опубликовать позже».')}
       </EmptyState>
     )
   }
   return (
     <div className="schedule">
-      <header className="pane-head"><h2>Публикации</h2></header>
+      <header className="pane-head"><h2>{t('Публикации')}</h2></header>
       {schedules.map((entry) => (
         <article key={entry.id} className={`schedule-card state-${entry.state}`}>
           <div className="schedule-when">
             <Icon name={entry.state === 'failed' ? 'warning' : 'clock'} size={18} />
             <div>
               <b>{formatFull(entry.at)}</b>
-              <span className="muted">{entry.remote}/{entry.branch} · {plural(entry.commits.length, 'коммит', 'коммита', 'коммитов')} · {entry.dateMode === 'keep' ? 'даты без изменений' : 'дата публикации'}</span>
+              <span className="muted">{entry.remote}/{entry.branch} · {plural(entry.commits.length, 'коммит', 'коммита', 'коммитов')} · {entry.dateMode === 'keep' ? t('даты без изменений') : t('дата публикации')}</span>
             </div>
             <span className={`pill state-${entry.state}`}>{STATE_TEXT[entry.state]}</span>
           </div>
           <ul className="schedule-commits">
             {entry.commits.map((commit) => <li key={commit.sha} className="truncate">{commit.subject}</li>)}
           </ul>
-          {entry.error && <div className={`banner ${entry.state === 'failed' ? 'danger' : 'warn'}`}><Icon name="warning" />{entry.error}</div>}
-          {entry.note && <div className="banner">{entry.note}</div>}
+          {entry.error && <div className={`banner ${entry.state === 'failed' ? 'danger' : 'warn'}`}><Icon name="warning" />{translateRecord(entry.error)}</div>}
+          {entry.note && <div className="banner">{translateRecord(entry.note)}</div>}
           {entry.error && accessIssueOf(entry.error) && snapshot?.forge && (
-            <button className="btn btn-small access-action" onClick={() => showAccess({ issue: accessIssueOf(entry.error!)! })}><Icon name="key" size={13} />Настроить доступ</button>
+            <button className="btn btn-small access-action" onClick={() => showAccess({ issue: accessIssueOf(entry.error!)! })}><Icon name="key" size={13} />{t('Настроить доступ')}</button>
           )}
           <div className="detail-actions">
             {entry.state === 'pending' && (
               <button className="btn btn-primary btn-small" onClick={() => show(<ConfirmDialog
-                title="Опубликовать сейчас"
-                confirmLabel="Опубликовать"
-                body={`Коммиты будут отправлены в ${entry.remote}/${entry.branch} прямо сейчас.`}
-                onConfirm={() => void run('Публикую', async () => {
+                title={t('Опубликовать сейчас')}
+                confirmLabel={t('Опубликовать')}
+                body={t('Коммиты будут отправлены в {remote}/{branch} прямо сейчас.', { remote: entry.remote, branch: entry.branch })}
+                onConfirm={() => void run(t('Публикую'), async () => {
                   const result = await client.publishNow(entry.id)
-                  toast(result.state === 'done' ? 'success' : 'error', result.state === 'done' ? 'Коммиты опубликованы' : result.error ?? 'Не удалось опубликовать')
+                  toast(result.state === 'done' ? 'success' : 'error', result.state === 'done' ? t('Коммиты опубликованы') : result.error ?? t('Не удалось опубликовать'))
                 })}
-              />)}>Опубликовать сейчас</button>
+              />)}>{t('Опубликовать сейчас')}</button>
             )}
             {(entry.state === 'pending' || entry.state === 'failed') && (
-              <button className="btn btn-small" onClick={() => void run('Возвращаю коммиты', () => client.cancelSchedule(entry.id))}>Отменить и вернуть в ветку</button>
+              <button className="btn btn-small" onClick={() => void run(t('Возвращаю коммиты'), () => client.cancelSchedule(entry.id))}>{t('Отменить и вернуть в ветку')}</button>
             )}
             {entry.state !== 'pending' && entry.state !== 'failed' && (
-              <button className="btn btn-small btn-ghost" onClick={() => void run('Убираю запись', () => client.dismissSchedule(entry.id))}>Убрать из списка</button>
+              <button className="btn btn-small btn-ghost" onClick={() => void run(t('Убираю запись'), () => client.dismissSchedule(entry.id))}>{t('Убрать из списка')}</button>
             )}
           </div>
         </article>

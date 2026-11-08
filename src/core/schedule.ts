@@ -8,6 +8,7 @@ import { lsRemoteBranch, resolveBranchTarget } from './ops'
 import { exclusive } from './exclusive'
 import { commonDir, readCommits } from './read'
 import { moveRefs, replayOnto } from './rewrite'
+import { t } from '../shared/i18n'
 
 async function storePath(cwd: string): Promise<string> {
   return join(await commonDir(cwd), 'chronicle', 'schedules.json')
@@ -42,7 +43,7 @@ async function changeSchedules<T>(cwd: string, change: (schedules: ScheduledPubl
 async function updateSchedule(cwd: string, id: string, patch: Partial<ScheduledPublish>): Promise<ScheduledPublish> {
   return changeSchedules(cwd, (schedules) => {
     const entry = schedules.find((item) => item.id === id)
-    if (!entry) throw new Error('Публикация не найдена')
+    if (!entry) throw new Error(t('Публикация не найдена'))
     Object.assign(entry, patch)
     return { schedules, result: entry }
   })
@@ -65,14 +66,14 @@ export interface ScheduleRequest {
  * If the server refuses the removal, the local branch is restored and nothing is scheduled.
  */
 export async function schedulePublish(cwd: string, request: ScheduleRequest): Promise<ScheduledPublish> {
-  if (!Number.isInteger(request.count) || request.count < 1) throw new Error('Нужно выбрать хотя бы один коммит')
-  if (Number.isNaN(Date.parse(request.at))) throw new Error('Некорректное время публикации')
+  if (!Number.isInteger(request.count) || request.count < 1) throw new Error(t('Нужно выбрать хотя бы один коммит'))
+  if (Number.isNaN(Date.parse(request.at))) throw new Error(t('Некорректное время публикации'))
   const target = await resolveBranchTarget(cwd, request.branch, request.remote)
   const tip = target.localSha
   const commits = (await readCommits(cwd, ['--first-parent', `--max-count=${request.count}`, tip]))
-  if (commits.length < request.count) throw new Error('В ветке меньше коммитов, чем выбрано')
+  if (commits.length < request.count) throw new Error(t('В ветке меньше коммитов, чем выбрано'))
   if (commits.some((commit) => commit.parents.length !== 1)) {
-    throw new Error('Нельзя снять merge-коммит или самый первый коммит ветки')
+    throw new Error(t('Нельзя снять merge-коммит или самый первый коммит ветки'))
   }
   const base = commits.at(-1)!.parents[0]
   const held = [...commits].reverse()
@@ -83,7 +84,7 @@ export async function schedulePublish(cwd: string, request: ScheduleRequest): Pr
     await git(cwd, ['fetch', '--', target.remote, `+refs/heads/${target.remoteBranch}:refs/remotes/${target.remote}/${target.remoteBranch}`])
     if (!(await isAncestor(cwd, remoteSha, base))) {
       const onTheWay = (await isAncestor(cwd, base, remoteSha)) && (await isAncestor(cwd, remoteSha, tip))
-      if (!onTheWay) throw new Error('На сервере есть коммиты, которых нет локально. Сначала подтяни изменения.')
+      if (!onTheWay) throw new Error(t('На сервере есть коммиты, которых нет локально. Сначала подтяни изменения.'))
       removeFromServer = true
     }
   }
@@ -92,7 +93,7 @@ export async function schedulePublish(cwd: string, request: ScheduleRequest): Pr
   await git(cwd, ['update-ref', keeperRef(id), tip])
   const branchRef = `refs/heads/${request.branch}`
   try {
-    await moveRefs(cwd, [{ ref: branchRef, before: tip, after: base }], `Снятие коммитов для публикации: ${request.branch}`)
+    await moveRefs(cwd, [{ ref: branchRef, before: tip, after: base }], t('Снятие коммитов для публикации: {branch}', { branch: request.branch }))
     if (removeFromServer) {
       try {
         await git(cwd, [
@@ -101,7 +102,7 @@ export async function schedulePublish(cwd: string, request: ScheduleRequest): Pr
         ])
         await git(cwd, ['update-ref', `refs/remotes/${target.remote}/${target.remoteBranch}`, base])
       } catch (error) {
-        await moveRefs(cwd, [{ ref: branchRef, before: base, after: tip }], `Возврат коммитов: ${request.branch}`)
+        await moveRefs(cwd, [{ ref: branchRef, before: base, after: tip }], t('Возврат коммитов: {branch}', { branch: request.branch }))
         throw error
       }
     }
@@ -137,12 +138,12 @@ function localIso(date: Date): string {
 const running = new Set<string>()
 
 export async function publishNow(cwd: string, id: string, now: Date = new Date()): Promise<ScheduledPublish> {
-  if (running.has(id)) throw new Error('Эта публикация уже выполняется')
+  if (running.has(id)) throw new Error(t('Эта публикация уже выполняется'))
   running.add(id)
   try {
     const entry = (await listSchedules(cwd)).find((item) => item.id === id)
-    if (!entry) throw new Error('Публикация не найдена')
-    if (entry.state !== 'pending') throw new Error('Эта публикация уже завершена')
+    if (!entry) throw new Error(t('Публикация не найдена'))
+    if (entry.state !== 'pending') throw new Error(t('Эта публикация уже завершена'))
     return await publish(cwd, entry, now)
   } finally {
     running.delete(id)
@@ -169,7 +170,7 @@ async function publish(cwd: string, entry: ScheduledPublish, now: Date): Promise
   if (!replay.tip) {
     return updateSchedule(cwd, entry.id, {
       state: 'failed',
-      error: `Конфликт с новыми коммитами на сервере в «${replay.conflict!.subject}»: ${replay.conflict!.files.join(', ')}. Коммиты сохранены.`
+      error: t('Конфликт с новыми коммитами на сервере в «{subject}»: {value}. Коммиты сохранены.', { subject: replay.conflict!.subject, value: replay.conflict!.files.join(', ') })
     })
   }
 
@@ -186,12 +187,12 @@ async function publish(cwd: string, entry: ScheduledPublish, now: Date): Promise
   if (localSha && localSha !== replay.tip) {
     if (await isAncestor(cwd, localSha, replay.tip)) {
       try {
-        await moveRefs(cwd, [{ ref: branchRef, before: localSha, after: replay.tip }], `Публикация: ${entry.branch}`)
+        await moveRefs(cwd, [{ ref: branchRef, before: localSha, after: replay.tip }], t('Публикация: {branch}', { branch: entry.branch }))
       } catch {
-        note = 'Коммиты опубликованы. Локальная ветка не обновлена из-за правок в рабочей папке, подтяни изменения позже.'
+        note = t('Коммиты опубликованы. Локальная ветка не обновлена из-за правок в рабочей папке, подтяни изменения позже.')
       }
     } else {
-      note = 'Коммиты опубликованы. В локальной ветке есть новые коммиты, поэтому нужно подтянуть изменения.'
+      note = t('Коммиты опубликованы. В локальной ветке есть новые коммиты, поэтому нужно подтянуть изменения.')
     }
   }
   await runGit(cwd, ['update-ref', '-d', keeperRef(entry.id)])
@@ -218,33 +219,33 @@ export function waitingNotice(entry: ScheduledPublish): { title: string; body: s
   if (entry.state !== 'pending' || !entry.error) return null
   const issue = classifyAccessError(entry.error)
   if (issue === 'offline') return null
-  if (issue) return { title: `Публикация ждёт доступа: ${entry.branch}`, body: issueSummary(issue) }
+  if (issue) return { title: t('Публикация ждёт доступа: {branch}', { branch: entry.branch }), body: issueSummary(issue) }
   return {
-    title: `Публикация не проходит: ${entry.branch}`,
-    body: `Сервер не принял коммиты, попытки продолжатся. Скорее всего, нужно что-то исправить: ${entry.error}`
+    title: t('Публикация не проходит: {branch}', { branch: entry.branch }),
+    body: t('Сервер не принял коммиты, попытки продолжатся. Скорее всего, нужно что-то исправить: {error}', { error: entry.error })
   }
 }
 
 /** Cancels a publish and puts the commits back on the local branch. The server is left alone. */
 export async function cancelSchedule(cwd: string, id: string): Promise<ScheduledPublish> {
   const entry = (await listSchedules(cwd)).find((item) => item.id === id)
-  if (!entry) throw new Error('Публикация не найдена')
-  if (entry.state === 'done' || entry.state === 'cancelled') throw new Error('Эта публикация уже завершена')
+  if (!entry) throw new Error(t('Публикация не найдена'))
+  if (entry.state === 'done' || entry.state === 'cancelled') throw new Error(t('Эта публикация уже завершена'))
   const branchRef = `refs/heads/${entry.branch}`
   const localSha = await revParse(cwd, branchRef)
-  if (!localSha) throw new Error(`Ветка ${entry.branch} не найдена`)
+  if (!localSha) throw new Error(t('Ветка {branch} не найдена', { branch: entry.branch }))
   const replay = await replayOnto(cwd, entry.commits.map((commit) => commit.sha), localSha)
   if (!replay.tip) {
-    throw new Error(`Коммит «${replay.conflict!.subject}» конфликтует с локальной веткой. Сначала разреши это вручную.`)
+    throw new Error(t('Коммит «{subject}» конфликтует с локальной веткой. Сначала разреши это вручную.', { subject: replay.conflict!.subject }))
   }
-  await moveRefs(cwd, [{ ref: branchRef, before: localSha, after: replay.tip }], `Возврат коммитов: ${entry.branch}`)
+  await moveRefs(cwd, [{ ref: branchRef, before: localSha, after: replay.tip }], t('Возврат коммитов: {branch}', { branch: entry.branch }))
   await runGit(cwd, ['update-ref', '-d', keeperRef(id)])
-  return updateSchedule(cwd, id, { state: 'cancelled', note: 'Коммиты возвращены в локальную ветку.' })
+  return updateSchedule(cwd, id, { state: 'cancelled', note: t('Коммиты возвращены в локальную ветку.') })
 }
 
 export async function dismissSchedule(cwd: string, id: string): Promise<void> {
   await changeSchedules(cwd, (schedules) => {
-    if (schedules.find((item) => item.id === id)?.state === 'pending') throw new Error('Сначала отмени публикацию')
+    if (schedules.find((item) => item.id === id)?.state === 'pending') throw new Error(t('Сначала отмени публикацию'))
     return { schedules: schedules.filter((item) => item.id !== id), result: null }
   })
 }

@@ -11,6 +11,7 @@ import { ConflictEditor } from './ConflictEditor'
 import { DiffView } from './DiffView'
 import { ResultHistory } from './ResultHistory'
 import { Avatar, Icon, Modal } from './ui'
+import { t } from '../../../shared/i18n'
 
 interface DialogContextValue {
   show: (node: ReactNode) => void
@@ -50,7 +51,7 @@ export function ConfirmDialog({ title, body, confirmLabel, danger, onConfirm }: 
       title={title}
       onClose={close}
       footer={<>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
         <button className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} autoFocus onClick={() => { close(); onConfirm() }}>{confirmLabel}</button>
       </>}
     >
@@ -81,7 +82,7 @@ export function PromptDialog({ title, label, initial = '', placeholder, confirmL
       title={title}
       onClose={close}
       footer={<>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
         <button className="btn btn-primary" disabled={!value.trim()} onClick={submit}>{confirmLabel}</button>
       </>}
     >
@@ -120,7 +121,7 @@ function ConflictWalkthrough({ conflict, onDone, onBack }: {
   const complete = files.every((item) => answers[item.path])
   return (
     <>
-      <p className="prose">Коммит <b>{conflict.subject}</b> конфликтует с новым порядком. Выбери, что должно получиться.</p>
+      <p className="prose">{t('Коммит')} <b>{conflict.subject}</b> {t('конфликтует с новым порядком. Выбери, что должно получиться.')}</p>
       {files.length > 1 && (
         <div className="conflict-tabs">
           {files.map((item) => (
@@ -135,20 +136,20 @@ function ConflictWalkthrough({ conflict, onDone, onBack }: {
         <ConflictEditor
           key={file.path}
           file={file}
-          oursLabel="История до этого коммита"
-          theirsLabel="Этот коммит"
+          oursLabel={t('История до этого коммита')}
+          theirsLabel={t('Этот коммит')}
           initial={answers[file.path] ?? null}
           onChange={(resolution) => setAnswers((current) => ({ ...current, [file.path]: resolution }))}
         />
       )}
       <div className="conflict-foot">
-        <button className="btn btn-ghost" onClick={onBack}>Назад</button>
+        <button className="btn btn-ghost" onClick={onBack}>{t('Назад')}</button>
         <button
           className="btn btn-primary"
           disabled={!complete}
           onClick={() => onDone(Object.fromEntries(files.map((item) => [item.path, answers[item.path]!])))}
         >
-          Сохранить и продолжить
+          {t('Сохранить и продолжить')}
         </button>
       </div>
     </>
@@ -187,7 +188,7 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
   const apply = async (): Promise<void> => {
     if (!preview) return
     setApplying(true)
-    const result = await run('Применяю правки', async () => {
+    const result = await run(t('Применяю правки'), async () => {
       const applied = await client.applyRewrite({ ...plan, resign }, preview.refUpdates)
       // Every SHA a draft refers to may have just changed. Clearing it before the reload that
       // follows keeps that reload from mistaking this for a change made outside the app.
@@ -203,9 +204,9 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
     const { mapping } = result.preview
     setSelected(selected.map((sha) => mapping[sha] ?? sha))
     const forced = result.preview.refUpdates.filter((update) => update.needsForcePush)
-    toast('success', `Готово. Переписано коммитов: ${result.preview.rewrittenCount}`, {
-      label: 'Отменить',
-      run: () => void run('Отменяю', () => client.undoEntry(result.entry.id))
+    toast('success', t('Готово. Переписано коммитов: {rewrittenCount}', { rewrittenCount: result.preview.rewrittenCount }), {
+      label: t('Отменить'),
+      run: () => void run(t('Отменяю'), () => client.undoEntry(result.entry.id))
     })
     if (forced.length) show(<PushDialog branch={forced[0].name} />)
   }
@@ -214,7 +215,7 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
   const resolvable = preview?.conflicts.find((conflict) => conflict.reason === 'content' && conflict.details?.length)
   if (resolving && resolvable) {
     return (
-      <Modal title="Разрешение конфликта" extraWide onClose={close}>
+      <Modal title={t('Разрешение конфликта')} extraWide onClose={close}>
         <ConflictWalkthrough
           key={resolvable.sha}
           conflict={resolvable}
@@ -229,26 +230,26 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
   }
   return (
     <Modal
-      title="Предпросмотр изменений"
+      title={t('Предпросмотр изменений')}
       wide
       onClose={close}
       footer={<>
-        <span className="foot-note">Сервер не изменится. Применение можно отменить.</span>
-        <button className="btn btn-ghost" onClick={close}>Назад</button>
+        <span className="foot-note">{t('Сервер не изменится. Применение можно отменить.')}</span>
+        <button className="btn btn-ghost" onClick={close}>{t('Назад')}</button>
         <button className="btn btn-primary" disabled={!canApply || applying} onClick={() => void apply()}>
-          {applying ? 'Применяю…' : 'Применить локально'}
+          {applying ? t('Применяю…') : t('Применить локально')}
         </button>
       </>}
     >
       {error && <div className="banner danger"><Icon name="warning" />{error}</div>}
-      {!preview && !error && <div className="diff-loading">Строю новую историю…</div>}
+      {!preview && !error && <div className="diff-loading">{t('Строю новую историю…')}</div>}
       {preview && (
         <>
           <div className="stat-row">
-            <div className="stat"><b>{preview.rewrittenCount}</b><span>новых SHA</span></div>
-            <div className="stat"><b>{preview.refUpdates.filter((update) => update.kind === 'branch').length}</b><span>веток изменится</span></div>
-            <div className="stat"><b>{preview.refUpdates.filter((update) => update.kind === 'tag').length}</b><span>тегов изменится</span></div>
-            <div className="stat"><b>{preview.worktreeChanges ? 'да' : 'нет'}</b><span>файлы изменятся</span></div>
+            <div className="stat"><b>{preview.rewrittenCount}</b><span>{t('новых SHA')}</span></div>
+            <div className="stat"><b>{preview.refUpdates.filter((update) => update.kind === 'branch').length}</b><span>{t('веток изменится')}</span></div>
+            <div className="stat"><b>{preview.refUpdates.filter((update) => update.kind === 'tag').length}</b><span>{t('тегов изменится')}</span></div>
+            <div className="stat"><b>{preview.worktreeChanges ? t('да') : t('нет')}</b><span>{t('файлы изменятся')}</span></div>
           </div>
           {preview.conflicts.map((conflict) => (
             <div className="banner danger" key={conflict.sha}>
@@ -256,39 +257,39 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
               <div>
                 <b>
                   {conflict.reason === 'merge-commit'
-                    ? `Merge-коммит «${conflict.subject}» нельзя пересоздать точно.`
+                    ? t('Merge-коммит «{subject}» нельзя пересоздать точно.', { subject: conflict.subject })
                     : conflict.reason === 'split'
-                      ? `Разделение коммита «${conflict.subject}» больше не применяется.`
-                      : `Конфликт в коммите «${conflict.subject}».`}
+                      ? t('Разделение коммита «{subject}» больше не применяется.', { subject: conflict.subject })
+                      : t('Конфликт в коммите «{subject}».', { subject: conflict.subject })}
                 </b>
                 {conflict.files.length > 0 && <div className="mono-list">{conflict.files.join(', ')}</div>}
-                {conflict.reason === 'merge-commit' && <div>Измени порядок так, чтобы содержимое до merge-коммита осталось прежним.</div>}
-                {conflict.reason === 'split' && <div>Отмени разделение или верни прежний порядок коммитов, затем раздели заново.</div>}
+                {conflict.reason === 'merge-commit' && <div>{t('Измени порядок так, чтобы содержимое до merge-коммита осталось прежним.')}</div>}
+                {conflict.reason === 'split' && <div>{t('Отмени разделение или верни прежний порядок коммитов, затем раздели заново.')}</div>}
                 {conflict.reason === 'content' && (
-                  <button className="btn btn-small" onClick={() => setResolving(true)}>Разрешить конфликт</button>
+                  <button className="btn btn-small" onClick={() => setResolving(true)}>{t('Разрешить конфликт')}</button>
                 )}
               </div>
             </div>
           ))}
           {preview.blockers.map((text) => <div className="banner danger" key={text}><Icon name="warning" />{text}</div>)}
           {preview.warnings.slice(0, MAX_WARNINGS).map((text) => <div className="banner warn" key={text}><Icon name="warning" />{text}</div>)}
-          {preview.warnings.length > MAX_WARNINGS && <p className="hint">И ещё предупреждений: {preview.warnings.length - MAX_WARNINGS}</p>}
+          {preview.warnings.length > MAX_WARNINGS && <p className="hint">{t('И ещё предупреждений:')} {preview.warnings.length - MAX_WARNINGS}</p>}
           {preview.signaturesLost.length > 0 && signing?.available && (
             <label className="check">
               <input type="checkbox" checked={resign} onChange={(event) => setResign(event.target.checked)} />
-              <span>Подписать эти коммиты заново моим ключом ({signing.format}). Подпись станет твоей, даже если раньше коммит подписывал другой человек.</span>
+              <span>{t('Подписать эти коммиты заново моим ключом (')}{signing.format}{t('). Подпись станет твоей, даже если раньше коммит подписывал другой человек.')}</span>
             </label>
           )}
           {preview.refUpdates.length > 0 && (
             <table className="ref-table">
-              <thead><tr><th>Ссылка</th><th>Было</th><th>Станет</th><th>Сервер</th></tr></thead>
+              <thead><tr><th>{t('Ссылка')}</th><th>{t('Было')}</th><th>{t('Станет')}</th><th>{t('Сервер')}</th></tr></thead>
               <tbody>
                 {preview.refUpdates.map((update) => (
                   <tr key={update.ref}>
                     <td><Icon name={update.kind === 'branch' ? 'branch' : 'tag'} size={13} /> {update.name}</td>
                     <td><code>{shortSha(update.beforeCommit)}</code></td>
                     <td><code className="new-sha">{shortSha(update.afterCommit)}</code></td>
-                    <td>{update.needsForcePush ? <span className="pill warn">нужен force-push</span> : <span className="pill">без изменений</span>}</td>
+                    <td>{update.needsForcePush ? <span className="pill warn">{t('нужен force-push')}</span> : <span className="pill">{t('без изменений')}</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -296,7 +297,7 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
           )}
           {preview.refUpdates.some((update) => update.kind === 'branch') && <ResultHistory preview={preview} />}
           {!preview.refUpdates.length && !preview.conflicts.length && !preview.blockers.length && (
-            <div className="banner">План ничего не меняет.</div>
+            <div className="banner">{t('План ничего не меняет.')}</div>
           )}
         </>
       )}
@@ -342,7 +343,7 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
   const send = async (): Promise<void> => {
     if (!preview) return
     close()
-    const done = await run('Отправляю на сервер', async () => {
+    const done = await run(t('Отправляю на сервер'), async () => {
       if (preview.needsForce || tags.length) {
         await client.forcePush({
           branch,
@@ -357,8 +358,8 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
     })
     if (!done) return
     const requestUrl = forge?.remote === preview.remote && !preview.isDefaultBranch ? newRequestUrl(forge, preview.remoteBranch) : null
-    toast('success', `Ветка ${branch} отправлена на ${preview.remote}`, requestUrl
-      ? { label: `Создать ${requestLabel(forge!.kind)}`, run: () => void appApi.openExternal(requestUrl) }
+    toast('success', t('Ветка {branch} отправлена на {remote}', { branch, remote: preview.remote }), requestUrl
+      ? { label: t('Создать {value}', { value: requestLabel(forge!.kind) }), run: () => void appApi.openExternal(requestUrl) }
       : undefined)
   }
 
@@ -367,52 +368,52 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
   const nothing = preview && !preview.appear.length && !preview.vanish.length && !tags.length
   return (
     <Modal
-      title={preview?.needsForce ? 'Перезаписать историю на сервере' : 'Отправить на сервер'}
+      title={preview?.needsForce ? t('Перезаписать историю на сервере') : t('Отправить на сервер')}
       wide
       onClose={close}
       footer={<>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
         <button
           className={`btn ${preview?.needsForce ? 'btn-danger' : 'btn-primary'}`}
           disabled={!preview || Boolean(nothing) || (needsConfirm && !understood)}
           onClick={() => void send()}
         >
-          {preview?.needsForce ? 'Перезаписать на сервере' : 'Отправить'}
+          {preview?.needsForce ? t('Перезаписать на сервере') : t('Отправить')}
         </button>
       </>}
     >
       {error && <div className="banner danger"><Icon name="warning" />{error}</div>}
-      {!preview && !error && <div className="diff-loading">Сверяюсь с сервером…</div>}
+      {!preview && !error && <div className="diff-loading">{t('Сверяюсь с сервером…')}</div>}
       {preview && (
         <>
           <p className="prose">
             <b>{preview.branch}</b> → <b>{preview.remote}/{preview.remoteBranch}</b>
-            {!preview.remoteSha && ' (новая ветка на сервере)'}
+            {!preview.remoteSha && t(' (новая ветка на сервере)')}
           </p>
-          {nothing && <div className="banner">На сервере уже всё актуально.</div>}
+          {nothing && <div className="banner">{t('На сервере уже всё актуально.')}</div>}
           {preview.remoteMoved && preview.vanish.length > 0 && (
             <div className="banner danger">
               <Icon name="warning" />
-              С момента последнего обновления на сервере появились новые коммиты. Посмотри список ниже: перезапись удалит их. Возможно, лучше сначала подтянуть изменения.
+              {t('С момента последнего обновления на сервере появились новые коммиты. Посмотри список ниже: перезапись удалит их. Возможно, лучше сначала подтянуть изменения.')}
             </div>
           )}
           {preview.needsForce && preview.isDefaultBranch && (
             <div className="banner warn">
               <Icon name="warning" />
               <div>
-                Это основная ветка репозитория. Сервер может отклонить перезапись из-за защиты ветки.
-                {protectionUrl && <button className="btn btn-small" onClick={() => void appApi.openExternal(protectionUrl)}><Icon name="external" size={13} />Открыть настройки защиты</button>}
+                {t('Это основная ветка репозитория. Сервер может отклонить перезапись из-за защиты ветки.')}
+                {protectionUrl && <button className="btn btn-small" onClick={() => void appApi.openExternal(protectionUrl)}><Icon name="external" size={13} />{t('Открыть настройки защиты')}</button>}
               </div>
             </div>
           )}
           <div className="push-columns">
             <div>
-              <h4 className="add">Появятся на сервере: {preview.appear.length}</h4>
+              <h4 className="add">{t('Появятся на сервере:')} {preview.appear.length}</h4>
               <ul className="commit-list">{preview.appear.slice(0, 100).map((commit) => <CommitLine key={commit.sha} commit={commit} />)}</ul>
             </div>
             {preview.vanish.length > 0 && (
               <div>
-                <h4 className="del">Исчезнут с сервера: {preview.vanish.length}</h4>
+                <h4 className="del">{t('Исчезнут с сервера:')} {preview.vanish.length}</h4>
                 <ul className="commit-list">{preview.vanish.slice(0, 100).map((commit) => <CommitLine key={commit.sha} commit={commit} />)}</ul>
               </div>
             )}
@@ -420,17 +421,17 @@ export function PushDialog({ branch }: { branch: string }): ReactNode {
           {tags.length > 0 && (
             <label className="check">
               <input type="checkbox" checked={includeTags} onChange={(event) => setIncludeTags(event.target.checked)} />
-              <span>Также обновить теги на сервере: {tags.map((tag) => tag.name).join(', ')}</span>
+              <span>{t('Также обновить теги на сервере:')} {tags.map((tag) => tag.name).join(', ')}</span>
             </label>
           )}
           {needsConfirm && (
             <>
               <p className="hint">
-                Участникам проекта придётся обновить свои клоны. Старые коммиты могут оставаться в их клонах, форках и открываться по прямому SHA. Отправка защищена проверкой: если сервер изменится ещё раз, git её отклонит.
+                {t('Участникам проекта придётся обновить свои клоны. Старые коммиты могут оставаться в их клонах, форках и открываться по прямому SHA. Отправка защищена проверкой: если сервер изменится ещё раз, git её отклонит.')}
               </p>
               <label className="check">
                 <input type="checkbox" checked={understood} onChange={(event) => setUnderstood(event.target.checked)} />
-                <span>Понимаю, что история на сервере будет перезаписана</span>
+                <span>{t('Понимаю, что история на сервере будет перезаписана')}</span>
               </label>
             </>
           )}
@@ -451,32 +452,32 @@ export function RenameBranchDialog({ name, upstream, isDefault }: { name: string
     if (!valid) return
     close()
     const newName = value.trim()
-    const result = await run('Переименовываю ветку', () =>
+    const result = await run(t('Переименовываю ветку'), () =>
       client.renameBranch({ oldName: name, newName, renameOnRemote: onRemote })
     )
     if (!result) return
     result.warnings.forEach((text) => toast('error', text))
     if (!result.warnings.length) {
-      toast('success', result.remoteDeleted ? `Ветка переименована локально и на сервере: ${newName}` : `Ветка переименована: ${newName}`)
+      toast('success', result.remoteDeleted ? t('Ветка переименована локально и на сервере: {newName}', { newName }) : t('Ветка переименована: {newName}', { newName }))
     }
   }
   return (
     <Modal
-      title="Переименовать ветку"
+      title={t('Переименовать ветку')}
       onClose={close}
       footer={<>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
-        <button className="btn btn-primary" disabled={!valid} onClick={() => void submit()}>Переименовать</button>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
+        <button className="btn btn-primary" disabled={!valid} onClick={() => void submit()}>{t('Переименовать')}</button>
       </>}
     >
       <label className="field">
-        <span>Новое имя</span>
+        <span>{t('Новое имя')}</span>
         <input autoFocus value={value} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void submit() }} />
       </label>
       {upstream && (
         <label className="check">
           <input type="checkbox" checked={onRemote} onChange={(event) => setOnRemote(event.target.checked)} />
-          <span>Переименовать и на сервере ({upstream})</span>
+          <span>{t('Переименовать и на сервере (')}{upstream})</span>
         </label>
       )}
       {onRemote && upstream && (
@@ -489,10 +490,10 @@ export function RenameBranchDialog({ name, upstream, isDefault }: { name: string
   )
 }
 
-const REMOTE_RENAME_NOTE = 'На сервере создаётся новая ветка, затем удаляется старая. Открытые Pull Request и Merge Request от старой ветки могут закрыться, а у коллег старое имя останется до обновления.'
+const REMOTE_RENAME_NOTE = t('На сервере создаётся новая ветка, затем удаляется старая. Открытые Pull Request и Merge Request от старой ветки могут закрыться, а у коллег старое имя останется до обновления.')
 
 function DefaultBranchRenameWarning(): ReactNode {
-  return <div className="banner warn"><Icon name="warning" />Это основная ветка. Сервер не даст удалить её, пока ты не сменишь основную ветку в настройках репозитория.</div>
+  return <div className="banner warn"><Icon name="warning" />{t('Это основная ветка. Сервер не даст удалить её, пока ты не сменишь основную ветку в настройках репозитория.')}</div>
 }
 
 export function RenameRemoteBranchDialog({ remote, name }: { remote: string; name: string }): ReactNode {
@@ -506,22 +507,22 @@ export function RenameRemoteBranchDialog({ remote, name }: { remote: string; nam
     if (!valid) return
     close()
     const newName = value.trim()
-    void run('Переименовываю на сервере', async () => {
+    void run(t('Переименовываю на сервере'), async () => {
       await client.renameRemoteBranch(remote, name, newName)
-      toast('success', `Ветка на сервере переименована: ${newName}`)
+      toast('success', t('Ветка на сервере переименована: {newName}', { newName }))
     })
   }
   return (
     <Modal
-      title="Переименовать ветку на сервере"
+      title={t('Переименовать ветку на сервере')}
       onClose={close}
       footer={<>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
-        <button className="btn btn-primary" disabled={!valid} onClick={submit}>Переименовать</button>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
+        <button className="btn btn-primary" disabled={!valid} onClick={submit}>{t('Переименовать')}</button>
       </>}
     >
       <label className="field">
-        <span>Новое имя</span>
+        <span>{t('Новое имя')}</span>
         <input autoFocus value={value} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submit() }} />
       </label>
       <p className="hint">{REMOTE_RENAME_NOTE}</p>
@@ -558,54 +559,54 @@ export function ScheduleDialog({ branch, count }: { branch: string; count: numbe
   }, [commits, count, ref])
   const submit = async (): Promise<void> => {
     close()
-    const entry = await run('Снимаю коммиты', () =>
+    const entry = await run(t('Снимаю коммиты'), () =>
       client.schedulePublish({ branch, count, at: new Date(at).toISOString(), dateMode })
     )
     if (entry) {
-      toast('success', 'Публикация запланирована')
+      toast('success', t('Публикация запланирована'))
       setView('schedule')
     }
   }
   return (
     <Modal
-      title="Снять и опубликовать позже"
+      title={t('Снять и опубликовать позже')}
       onClose={close}
       footer={<>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
-        <button className="btn btn-primary" disabled={!at || Date.parse(at) <= Date.now()} onClick={() => void submit()}>Запланировать</button>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
+        <button className="btn btn-primary" disabled={!at || Date.parse(at) <= Date.now()} onClick={() => void submit()}>{t('Запланировать')}</button>
       </>}
     >
-      <p className="prose">Эти коммиты уйдут из ветки <b>{branch}</b> локально и на сервере, а в указанное время вернутся.</p>
+      <p className="prose">{t('Эти коммиты уйдут из ветки')} <b>{branch}</b> {t('локально и на сервере, а в указанное время вернутся.')}</p>
       {unattended && (
         <div className="banner warn">
           <Icon name="warning" />
           <div>
-            Без тебя сервер не примет публикацию: сейчас он отвечает только после ввода пароля или вообще не даёт доступа. Для ключа с паролем поставь галочку «Запомнить» при вводе пароля.
+            {t('Без тебя сервер не примет публикацию: сейчас он отвечает только после ввода пароля или вообще не даёт доступа. Для ключа с паролем поставь галочку «Запомнить» при вводе пароля.')}
             <button className="btn btn-small" onClick={() => {
               close()
               showAccess({ issue: unattended, retry: () => show(<ScheduleDialog branch={branch} count={count} />) })
-            }}><Icon name="key" size={13} />Настроить доступ</button>
+            }}><Icon name="key" size={13} />{t('Настроить доступ')}</button>
           </div>
         </div>
       )}
       <ul className="commit-list">{held.map((commit) => <CommitLine key={commit.sha} commit={commit} />)}</ul>
       <label className="field">
-        <span>Когда опубликовать</span>
+        <span>{t('Когда опубликовать')}</span>
         <input type="datetime-local" value={at} onChange={(event) => setAt(event.target.value)} />
       </label>
       <fieldset className="radio-group">
-        <legend>Даты коммитов</legend>
+        <legend>{t('Даты коммитов')}</legend>
         <label className="check">
           <input type="radio" checked={dateMode === 'keep'} onChange={() => setDateMode('keep')} />
-          <span>Оставить как есть</span>
+          <span>{t('Оставить как есть')}</span>
         </label>
         <label className="check">
           <input type="radio" checked={dateMode === 'publish-time'} onChange={() => setDateMode('publish-time')} />
-          <span>Поставить время публикации</span>
+          <span>{t('Поставить время публикации')}</span>
         </label>
       </fieldset>
       <p className="hint">
-        Chronicle должен быть запущен в это время, он будет ждать в трее. Если компьютер был выключен, публикация выполнится при следующем запуске. Снятые коммиты могли успеть скачать другие, и по прямому SHA они могут оставаться доступны на сервере.
+        {t('Chronicle должен быть запущен в это время, он будет ждать в трее. Если компьютер был выключен, публикация выполнится при следующем запуске. Снятые коммиты могли успеть скачать другие, и по прямому SHA они могут оставаться доступны на сервере.')}
       </p>
     </Modal>
   )
@@ -650,7 +651,7 @@ export function SplitCommitDialog({ commit, onConfirm }: {
   const box = (key: string): ReactNode => (
     <label className="split-check">
       <input type="checkbox" checked={chosen.has(key)} onChange={() => toggle(key)} />
-      В первый коммит
+      {t('В первый коммит')}
     </label>
   )
   const binaryCount = diff?.files.filter((file) => file.binary).length ?? 0
@@ -667,25 +668,25 @@ export function SplitCommitDialog({ commit, onConfirm }: {
   }
   return (
     <Modal
-      title="Разделить коммит"
+      title={t('Разделить коммит')}
       extraWide
       onClose={close}
       footer={<>
-        <span className="foot-note">Выбрано кусков: {chosen.size} из {parts.length}. Остальное попадёт во второй коммит.</span>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
-        <button className="btn btn-primary" disabled={!valid} onClick={submit}>Добавить в черновик</button>
+        <span className="foot-note">{t('Выбрано кусков:')} {chosen.size} {t('из')} {parts.length}{t('. Остальное попадёт во второй коммит.')}</span>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
+        <button className="btn btn-primary" disabled={!valid} onClick={submit}>{t('Добавить в черновик')}</button>
       </>}
     >
-      {diff?.truncated && <div className="banner warn"><Icon name="warning" />Коммит слишком большой, чтобы показать его полностью, поэтому разделить его пока нельзя.</div>}
-      {binaryCount > 0 && <div className="banner"><Icon name="warning" />Бинарные файлы останутся во втором коммите.</div>}
-      {everything && <div className="banner warn"><Icon name="warning" />Оставь что-нибудь и для второго коммита.</div>}
+      {diff?.truncated && <div className="banner warn"><Icon name="warning" />{t('Коммит слишком большой, чтобы показать его полностью, поэтому разделить его пока нельзя.')}</div>}
+      {binaryCount > 0 && <div className="banner"><Icon name="warning" />{t('Бинарные файлы останутся во втором коммите.')}</div>}
+      {everything && <div className="banner warn"><Icon name="warning" />{t('Оставь что-нибудь и для второго коммита.')}</div>}
       <div className="field-row">
         <label className="field">
-          <span>Сообщение первого коммита</span>
-          <input autoFocus value={firstMessage} placeholder="Что входит в первую часть" onChange={(event) => setFirstMessage(event.target.value)} />
+          <span>{t('Сообщение первого коммита')}</span>
+          <input autoFocus value={firstMessage} placeholder={t('Что входит в первую часть')} onChange={(event) => setFirstMessage(event.target.value)} />
         </label>
         <label className="field">
-          <span>Сообщение второго коммита</span>
+          <span>{t('Сообщение второго коммита')}</span>
           <input value={secondMessage} onChange={(event) => setSecondMessage(event.target.value)} />
         </label>
       </div>
@@ -738,28 +739,28 @@ export function ReplaceAuthorDialog(): ReactNode {
   }
   return (
     <Modal
-      title="Заменить автора"
+      title={t('Заменить автора')}
       onClose={close}
       footer={<>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
-        <button className="btn btn-primary" disabled={!valid} onClick={submit}>Добавить в черновик</button>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
+        <button className="btn btn-primary" disabled={!valid} onClick={submit}>{t('Добавить в черновик')}</button>
       </>}
     >
       <label className="field">
-        <span>Кого заменить</span>
+        <span>{t('Кого заменить')}</span>
         <select value={source} onChange={(event) => setSource(Number(event.target.value))}>
           {authors.map((author, index) => (
             <option key={`${author.name}${author.email}`} value={index}>{author.name} &lt;{author.email}&gt;: {plural(author.count, 'коммит', 'коммита', 'коммитов')}</option>
           ))}
         </select>
       </label>
-      <label className="field"><span>Новое имя</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label className="field"><span>Новый email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+      <label className="field"><span>{t('Новое имя')}</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label className="field"><span>{t('Новый email')}</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
       <label className="check">
         <input type="checkbox" checked={committerToo} onChange={(event) => setCommitterToo(event.target.checked)} />
-        <span>Заменить и коммиттера, если это тот же человек</span>
+        <span>{t('Заменить и коммиттера, если это тот же человек')}</span>
       </label>
-      {hasMore && <div className="banner warn"><Icon name="warning" />Замена коснётся только загруженных коммитов. Загрузи всю историю внизу списка, чтобы охватить все.</div>}
+      {hasMore && <div className="banner warn"><Icon name="warning" />{t('Замена коснётся только загруженных коммитов. Загрузи всю историю внизу списка, чтобы охватить все.')}</div>}
     </Modal>
   )
 }
@@ -787,7 +788,7 @@ export function CleanHistoryDialog(): ReactNode {
   const pathList = paths.split('\n').map((line) => line.trim()).filter(Boolean)
   const submit = (): void => {
     if (mode === 'file') {
-      show(<ReviewDialog plan={{ removePaths: pathList, pruneEmpty, description: `Удаление из истории: ${pathList.join(', ')}` }} />)
+      show(<ReviewDialog plan={{ removePaths: pathList, pruneEmpty, description: t('Удаление из истории: {value}', { value: pathList.join(', ') }) }} />)
     } else if (chain?.length) {
       show(<ReviewDialog plan={{
         edits: { [chain[0].sha]: { message } },
@@ -796,46 +797,46 @@ export function CleanHistoryDialog(): ReactNode {
           tip: chain.at(-1)!.sha,
           todo: chain.map((commit, index) => ({ sha: commit.sha, action: index ? 'fixup' as const : 'pick' as const }))
         },
-        description: `Вся история ветки ${head} собрана в один коммит`
+        description: t('Вся история ветки {head} собрана в один коммит', { head })
       }} />)
     }
   }
   const canSubmit = mode === 'file' ? pathList.length > 0 : Boolean(chain?.length && chain.length > 1 && message.trim())
   return (
     <Modal
-      title="Очистка истории"
+      title={t('Очистка истории')}
       onClose={close}
       footer={<>
-        <button className="btn btn-ghost" onClick={close}>Отмена</button>
-        <button className="btn btn-primary" disabled={!canSubmit} onClick={submit}>К предпросмотру</button>
+        <button className="btn btn-ghost" onClick={close}>{t('Отмена')}</button>
+        <button className="btn btn-primary" disabled={!canSubmit} onClick={submit}>{t('К предпросмотру')}</button>
       </>}
     >
       <div className="segmented">
-        <button className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}>Удалить файлы</button>
-        <button className={mode === 'squash' ? 'active' : ''} onClick={() => setMode('squash')}>Всё в один коммит</button>
+        <button className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}>{t('Удалить файлы')}</button>
+        <button className={mode === 'squash' ? 'active' : ''} onClick={() => setMode('squash')}>{t('Всё в один коммит')}</button>
       </div>
       {mode === 'file' ? (
         <>
           <label className="field">
-            <span>Пути от корня репозитория, по одному на строку</span>
+            <span>{t('Пути от корня репозитория, по одному на строку')}</span>
             <textarea autoFocus rows={4} value={paths} placeholder={'secrets/.env\nbuild/huge.zip'} onChange={(event) => setPaths(event.target.value)} />
           </label>
           <label className="check">
             <input type="checkbox" checked={pruneEmpty} onChange={(event) => setPruneEmpty(event.target.checked)} />
-            <span>Убрать коммиты, которые станут пустыми</span>
+            <span>{t('Убрать коммиты, которые станут пустыми')}</span>
           </label>
-          <p className="hint">Файлы исчезнут из всех локальных веток и тегов. Если это утёкший пароль или ключ, его всё равно нужно отозвать: копии могли остаться у других.</p>
+          <p className="hint">{t('Файлы исчезнут из всех локальных веток и тегов. Если это утёкший пароль или ключ, его всё равно нужно отозвать: копии могли остаться у других.')}</p>
         </>
       ) : (
         <>
-          {chain === null && <div className="banner warn"><Icon name="warning" />В истории ветки есть merge-коммиты, поэтому объединение пока недоступно.</div>}
+          {chain === null && <div className="banner warn"><Icon name="warning" />{t('В истории ветки есть merge-коммиты, поэтому объединение пока недоступно.')}</div>}
           {chain && (
             <p className="prose">
-              Ветка <b>{head}</b>: {plural(chain.length, 'коммит', 'коммита', 'коммитов')} станут одним. Файлы останутся такими же, как сейчас.
+              {t('Ветка')} <b>{head}</b>: {plural(chain.length, 'коммит', 'коммита', 'коммитов')} {t('станут одним. Файлы останутся такими же, как сейчас.')}
             </p>
           )}
           <label className="field">
-            <span>Сообщение коммита</span>
+            <span>{t('Сообщение коммита')}</span>
             <input value={message} onChange={(event) => setMessage(event.target.value)} />
           </label>
         </>

@@ -6,6 +6,7 @@ import { parseRemoteUrl } from '../../../shared/remote-url'
 import { AccessDialog } from '../components/AccessDialog'
 import { Icon, Modal } from '../components/ui'
 import { SettingsDialog } from './SettingsDialog'
+import { t } from '../../../shared/i18n'
 
 function CloneDialog({ onClose, onOpen }: { onClose: () => void; onOpen: (repo: string) => void }): ReactNode {
   const [url, setUrl] = useState('')
@@ -45,23 +46,23 @@ function CloneDialog({ onClose, onOpen }: { onClose: () => void; onOpen: (repo: 
   }
   return (
     <Modal
-      title="Клонировать репозиторий"
+      title={t('Клонировать репозиторий')}
       onClose={onClose}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
-        <button className="btn btn-primary" disabled={!url.trim() || !parent || !directory || busy} onClick={() => void submit()}>{busy ? 'Клонирую…' : 'Клонировать'}</button>
+        <button className="btn btn-ghost" onClick={onClose}>{t('Отмена')}</button>
+        <button className="btn btn-primary" disabled={!url.trim() || !parent || !directory || busy} onClick={() => void submit()}>{busy ? t('Клонирую…') : t('Клонировать')}</button>
       </>}
     >
       {error && <div className="banner danger"><Icon name="warning" />{error}</div>}
       <label className="field">
-        <span>URL с GitHub, GitLab или другого сервера</span>
+        <span>{t('URL с GitHub, GitLab или другого сервера')}</span>
         <input autoFocus value={url} placeholder="git@gitlab.com:team/project.git" onChange={(event) => setUrl(event.target.value)} />
       </label>
       <div className="field">
-        <span>Куда</span>
-        <button className="btn" onClick={() => void appApi.pickFolder().then(setParent)}><Icon name="folder" size={14} />{parent ?? 'Выбрать папку'}</button>
+        <span>{t('Куда')}</span>
+        <button className="btn" onClick={() => void appApi.pickFolder().then(setParent)}><Icon name="folder" size={14} />{parent ?? t('Выбрать папку')}</button>
       </div>
-      {parent && directory && <p className="hint">Будет создана папка {directory}</p>}
+      {parent && directory && <p className="hint">{t('Будет создана папка')} {directory}</p>}
     </Modal>
   )
 }
@@ -96,19 +97,19 @@ export function Welcome({ onOpen }: { onOpen: (repo: string) => void }): ReactNo
           </svg>
         </div>
         <h1>Chronicle</h1>
-        <p className="tagline">История git, которую можно редактировать</p>
+        <p className="tagline">{t('История git, которую можно редактировать')}</p>
         {error && <div className="banner danger"><Icon name="warning" />{error}</div>}
         <div className="welcome-actions">
-          <button className="btn btn-primary" onClick={() => void attempt(() => appApi.pickRepository())}><Icon name="folder" size={15} />Открыть репозиторий</button>
-          <button className="btn" onClick={() => setCloning(true)}><Icon name="fetch" size={15} />Клонировать по адресу</button>
+          <button className="btn btn-primary" onClick={() => void attempt(() => appApi.pickRepository())}><Icon name="folder" size={15} />{t('Открыть репозиторий')}</button>
+          <button className="btn" onClick={() => setCloning(true)}><Icon name="fetch" size={15} />{t('Клонировать по адресу')}</button>
           <button className="btn" onClick={() => void attempt(async () => {
             const folder = await appApi.pickFolder()
             return folder ? appApi.initRepository(folder) : null
-          })}><Icon name="plus" size={15} />Создать новый</button>
+          })}><Icon name="plus" size={15} />{t('Создать новый')}</button>
         </div>
         {recent.length > 0 && (
           <div className="recent">
-            <h2>Недавние</h2>
+            <h2>{t('Недавние')}</h2>
             {recent.map((repo) => (
               <div className="recent-row" key={repo}>
                 <button onClick={() => void attempt(() => appApi.openRepository(repo))} title={repo}>
@@ -117,8 +118,8 @@ export function Welcome({ onOpen }: { onOpen: (repo: string) => void }): ReactNo
                 </button>
                 <button
                   className="icon-btn"
-                  aria-label={`Убрать ${baseName(repo)} из списка`}
-                  title="Убрать из списка"
+                  aria-label={t('Убрать {value} из списка', { value: baseName(repo) })}
+                  title={t('Убрать из списка')}
                   onClick={() => {
                     appApi.forgetRepository(repo)
                       .then(() => setRecent((items) => items.filter((item) => item !== repo)))
@@ -130,7 +131,7 @@ export function Welcome({ onOpen }: { onOpen: (repo: string) => void }): ReactNo
           </div>
         )}
       </div>
-      <button className="welcome-settings btn btn-ghost" onClick={() => setSettings(true)}><Icon name="gear" size={15} />Настройки</button>
+      <button className="welcome-settings btn btn-ghost" onClick={() => setSettings(true)}><Icon name="gear" size={15} />{t('Настройки')}</button>
       {cloning && <CloneDialog onClose={() => setCloning(false)} onOpen={onOpen} />}
       {settings && <SettingsDialog onClose={() => setSettings(false)} />}
     </div>

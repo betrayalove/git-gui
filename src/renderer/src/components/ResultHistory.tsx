@@ -3,6 +3,7 @@ import type { Commit, RewritePreview } from '../../../shared/types'
 import { formatRelative, shortSha } from '../format'
 import { useRepo } from '../store'
 import { Avatar } from './ui'
+import { t } from '../../../shared/i18n'
 
 const SHOWN = 30
 
@@ -34,18 +35,18 @@ export function ResultHistory({ preview }: { preview: RewritePreview }): ReactNo
   const lastNew = commits ? commits.findLastIndex((commit) => created.has(commit.sha)) : -1
   const visible = commits?.slice(0, Math.max(lastNew + 4, 6)) ?? []
   return (
-    <section className="result-history" aria-label="Как будет выглядеть ветка">
+    <section className="result-history" aria-label={t('Как будет выглядеть ветка')}>
       <header>
-        <h4>Как будет выглядеть ветка</h4>
+        <h4>{t('Как будет выглядеть ветка')}</h4>
         {branches.length > 1
           ? (
-            <select value={update.name} aria-label="Ветка" onChange={(event) => setName(event.target.value)}>
+            <select value={update.name} aria-label={t('Ветка')} onChange={(event) => setName(event.target.value)}>
               {branches.map((item) => <option key={item.ref} value={item.name}>{item.name}</option>)}
             </select>
           )
           : <b>{update.name}</b>}
       </header>
-      {!commits && <div className="diff-loading">Читаю новую историю…</div>}
+      {!commits && <div className="diff-loading">{t('Читаю новую историю…')}</div>}
       <ol>
         {visible.map((commit) => {
           const isNew = created.has(commit.sha)
@@ -56,7 +57,7 @@ export function ResultHistory({ preview }: { preview: RewritePreview }): ReactNo
               <Avatar name={commit.authorName} email={commit.authorEmail} size={16} />
               <span className="muted">{formatRelative(commit.authorDate)}</span>
               <code>{shortSha(commit.sha)}</code>
-              {isNew && <span className="pill small state-pending">новый</span>}
+              {isNew && <span className="pill small state-pending">{t('новый')}</span>}
             </li>
           )
         })}

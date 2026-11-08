@@ -1,4 +1,5 @@
 import type { UpdateInfo } from '../shared/types'
+import { t } from '../shared/i18n'
 
 const RELEASES_URL = 'https://api.github.com/repos/betrayalove/git-gui/releases/latest'
 const TIMEOUT_MS = 10_000
@@ -25,7 +26,7 @@ export async function checkForUpdate(current: string, url: string = RELEASES_URL
     signal: AbortSignal.timeout(TIMEOUT_MS)
   })
   if (response.status === 404) return { current, latest: null, available: false, url: null }
-  if (!response.ok) throw new Error(`Не удалось проверить обновления: ошибка ${response.status}`)
+  if (!response.ok) throw new Error(t('Не удалось проверить обновления: ошибка {status}', { status: response.status }))
   const release = (await response.json()) as { tag_name?: string; html_url?: string }
   const latest = release.tag_name?.replace(/^v/, '') ?? null
   const page = release.html_url?.startsWith('https://') ? release.html_url : null

@@ -360,3 +360,9 @@ export interface UpdateInfo {
   available: boolean
   url: string | null
 }
+
+export type Theme = 'system' | 'light' | 'dark'
+
+export function isTheme(value: unknown): value is Theme {
+  return value === 'system' || value === 'light' || value === 'dark'
+}

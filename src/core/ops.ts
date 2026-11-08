@@ -4,19 +4,20 @@ import type { BlobContent, Commit, ConflictResolution, MergeMode, MergePreview, 
 import { git, gitLine, isAncestor, revParse, runGit } from './git'
 import { readCommits, readRefs, readRemotes } from './read'
 import { sshCommandFor } from './ssh'
+import { t } from '../shared/i18n'
 
 /** A ref, SHA or remote name from outside. One that starts with a dash would be read as an option. */
-function assertRevision(value: string, problem = 'Недопустимая ссылка'): void {
+function assertRevision(value: string, problem = t('Недопустимая ссылка')): void {
   if (typeof value !== 'string' || !value || value.startsWith('-')) throw new Error(`${problem}: ${value}`)
 }
 
 function assertStashIndex(index: number): void {
-  if (!Number.isInteger(index) || index < 0) throw new Error(`Недопустимый номер записи stash: ${index}`)
+  if (!Number.isInteger(index) || index < 0) throw new Error(t('Недопустимый номер записи stash: {index}', { index }))
 }
 
 async function validateBranchName(cwd: string, name: string): Promise<void> {
   const { code } = await runGit(cwd, ['check-ref-format', '--branch', name], { okCodes: [1, 128] })
-  if (code !== 0) throw new Error(`Недопустимое имя ветки: ${name}`)
+  if (code !== 0) throw new Error(t('Недопустимое имя ветки: {name}', { name }))
 }
 
 // Working tree
@@ -103,9 +104,9 @@ const INCOMING_PAGE = 50
 export async function mergePreview(cwd: string, ref: string): Promise<MergePreview> {
   assertRevision(ref)
   const head = await revParse(cwd, 'HEAD')
-  if (!head) throw new Error('В текущей ветке ещё нет коммитов')
+  if (!head) throw new Error(t('В текущей ветке ещё нет коммитов'))
   const target = await revParse(cwd, ref)
-  if (!target) throw new Error(`Не найдено: ${ref}`)
+  if (!target) throw new Error(t('Не найдено: {ref}', { ref }))
   const count = async (range: string): Promise<number> => Number(await gitLine(cwd, ['rev-list', '--count', range, '--']))
   const [incomingCount, localCount] = await Promise.all([count(`${head}..${target}`), count(`${target}..${head}`)])
   const preview: MergePreview = {
@@ -144,7 +145,7 @@ export async function abortOperation(cwd: string, operation: string): Promise<vo
     bisect: ['bisect', 'reset']
   }
   const args = commands[operation]
-  if (!args) throw new Error(`Неизвестная операция: ${operation}`)
+  if (!args) throw new Error(t('Неизвестная операция: {operation}', { operation }))
   await git(cwd, args)
 }
 
@@ -156,7 +157,7 @@ export async function continueOperation(cwd: string, operation: string): Promise
     revert: ['revert', '--continue']
   }
   const args = commands[operation]
-  if (!args) throw new Error(`Эту операцию нельзя продолжить: ${operation}`)
+  if (!args) throw new Error(t('Эту операцию нельзя продолжить: {operation}', { operation }))
   await git(cwd, args)
 }
 
@@ -201,7 +202,7 @@ export async function readWorktreeConflicts(cwd: string): Promise<WorktreeConfli
 /** Marks a conflicted file as resolved. Only paths git reports as unmerged are accepted. */
 export async function resolveWorktreeConflict(cwd: string, path: string, resolution: ConflictResolution): Promise<void> {
   const unmerged = await git(cwd, ['ls-files', '--unmerged', '-z', '--', path])
-  if (!unmerged) throw new Error(`Файл не в конфликте: ${path}`)
+  if (!unmerged) throw new Error(t('Файл не в конфликте: {path}', { path }))
   const root = await gitLine(cwd, ['rev-parse', '--show-toplevel'])
   if ('deleted' in resolution) {
     await git(root, ['rm', '--quiet', '--force', '--', path])
@@ -226,7 +227,7 @@ export async function revertCommit(cwd: string, sha: string): Promise<void> {
 
 export async function resetTo(cwd: string, sha: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
   assertRevision(sha)
-  if (!['soft', 'mixed', 'hard'].includes(mode)) throw new Error(`Неизвестный режим сброса: ${mode}`)
+  if (!['soft', 'mixed', 'hard'].includes(mode)) throw new Error(t('Неизвестный режим сброса: {mode}', { mode }))
   await git(cwd, ['reset', `--${mode}`, sha, '--'])
 }
 
@@ -234,15 +235,15 @@ export async function resetTo(cwd: string, sha: string, mode: 'soft' | 'mixed' |
 
 export async function createTag(cwd: string, name: string, sha: string, message?: string): Promise<void> {
   const { code } = await runGit(cwd, ['check-ref-format', `refs/tags/${name}`], { okCodes: [1] })
-  if (code !== 0 || name.startsWith('-')) throw new Error(`Недопустимое имя тега: ${name}`)
+  if (code !== 0 || name.startsWith('-')) throw new Error(t('Недопустимое имя тега: {name}', { name }))
   if (message) await git(cwd, ['tag', '--annotate', '--file=-', name, sha], { input: message })
   else await git(cwd, ['tag', name, sha])
 }
 
 export async function deleteTag(cwd: string, name: string, remote?: string): Promise<void> {
-  assertRevision(name, 'Недопустимое имя тега')
+  assertRevision(name, t('Недопустимое имя тега'))
   if (remote !== undefined) {
-    assertRevision(remote, 'Недопустимое имя remote')
+    assertRevision(remote, t('Недопустимое имя remote'))
     await git(cwd, ['push', '--', remote, `:refs/tags/${name}`])
   }
   await git(cwd, ['tag', '--delete', name])
@@ -324,7 +325,7 @@ export async function readIdentity(cwd: string): Promise<CommitIdentity> {
 export async function setIdentity(cwd: string, identity: CommitIdentity): Promise<void> {
   const name = identity.name.trim()
   const email = identity.email.trim()
-  if (!name || !email || /[<>\n]/.test(name + email)) throw new Error('Некорректное имя или email')
+  if (!name || !email || /[<>\n]/.test(name + email)) throw new Error(t('Некорректное имя или email'))
   await git(cwd, ['config', '--local', 'user.name', name])
   await git(cwd, ['config', '--local', 'user.email', email])
 }
@@ -342,7 +343,7 @@ export interface BranchTarget {
 export async function resolveBranchTarget(cwd: string, branch: string, remote?: string): Promise<BranchTarget> {
   const refs = await readRefs(cwd)
   const local = refs.find((ref) => ref.kind === 'branch' && ref.name === branch)
-  if (!local) throw new Error(`Ветка не найдена: ${branch}`)
+  if (!local) throw new Error(t('Ветка не найдена: {branch}', { branch }))
   if (local.upstream && (!remote || local.upstream.startsWith(`${remote}/`))) {
     const [upstreamRemote, ...rest] = local.upstream.split('/')
     const remotes = await readRemotes(cwd)
@@ -359,7 +360,7 @@ export async function resolveBranchTarget(cwd: string, branch: string, remote?: 
   }
   const remotes = await readRemotes(cwd)
   const name = remote ?? remotes.find((entry) => entry.name === 'origin')?.name ?? remotes[0]?.name
-  if (!name) throw new Error('В репозитории не настроен remote')
+  if (!name) throw new Error(t('В репозитории не настроен remote'))
   return { remote: name, remoteBranch: branch, localSha: local.sha }
 }
 
@@ -451,9 +452,9 @@ export async function renameBranch(cwd: string, options: RenameBranchOptions): P
   const result: RenameBranchResult = { localRenamed: false, remoteCreated: false, remoteDeleted: false, warnings: [] }
   const refs = await readRefs(cwd)
   const local = refs.find((ref) => ref.kind === 'branch' && ref.name === oldName)
-  if (!local) throw new Error(`Ветка не найдена: ${oldName}`)
+  if (!local) throw new Error(t('Ветка не найдена: {oldName}', { oldName }))
   if (refs.some((ref) => ref.kind === 'branch' && ref.name === newName)) {
-    throw new Error(`Ветка ${newName} уже существует`)
+    throw new Error(t('Ветка {newName} уже существует', { newName }))
   }
   await git(cwd, ['branch', '-m', '--', oldName, newName])
   result.localRenamed = true
@@ -464,12 +465,12 @@ export async function renameBranch(cwd: string, options: RenameBranchOptions): P
   try {
     const serverSha = await lsRemoteBranch(cwd, target.remote, remoteOld)
     if (!serverSha) {
-      result.warnings.push(`На сервере ветки ${remoteOld} уже нет, поэтому переименована только локальная`)
+      result.warnings.push(t('На сервере ветки {remoteOld} уже нет, поэтому переименована только локальная', { remoteOld }))
       await git(cwd, ['branch', '--unset-upstream', newName])
       return result
     }
     if (await lsRemoteBranch(cwd, target.remote, newName)) {
-      throw new Error(`На сервере уже есть ветка ${newName}`)
+      throw new Error(t('На сервере уже есть ветка {newName}', { newName }))
     }
     // Publish what the server has, not local work the user has not pushed yet.
     await git(cwd, ['fetch', '--', target.remote, `+refs/heads/${remoteOld}:refs/remotes/${target.remote}/${remoteOld}`])
@@ -495,8 +496,8 @@ export async function renameBranch(cwd: string, options: RenameBranchOptions): P
     const defaultBranch = await remoteDefaultBranch(cwd, target.remote).catch(() => null)
     result.warnings.push(
       defaultBranch === remoteOld
-        ? `Ветка ${remoteOld} основная на сервере. Смени основную ветку в настройках репозитория, затем удали старую.`
-        : `Ветка ${newName} создана, но ${remoteOld} удалить не удалось: ${(error as Error).message}`
+        ? t('Ветка {remoteOld} основная на сервере. Смени основную ветку в настройках репозитория, затем удали старую.', { remoteOld })
+        : t('Ветка {newName} создана, но {remoteOld} удалить не удалось: {value}', { newName, remoteOld, value: (error as Error).message })
     )
   }
   return result
@@ -506,8 +507,8 @@ export async function renameBranch(cwd: string, options: RenameBranchOptions): P
 export async function renameRemoteBranch(cwd: string, remote: string, oldName: string, newName: string): Promise<void> {
   await validateBranchName(cwd, newName)
   const serverSha = await lsRemoteBranch(cwd, remote, oldName)
-  if (!serverSha) throw new Error(`На сервере нет ветки ${oldName}`)
-  if (await lsRemoteBranch(cwd, remote, newName)) throw new Error(`На сервере уже есть ветка ${newName}`)
+  if (!serverSha) throw new Error(t('На сервере нет ветки {oldName}', { oldName }))
+  if (await lsRemoteBranch(cwd, remote, newName)) throw new Error(t('На сервере уже есть ветка {newName}', { newName }))
   await git(cwd, ['fetch', '--', remote, `+refs/heads/${oldName}:refs/remotes/${remote}/${oldName}`])
   await git(cwd, ['push', '--', remote, `${serverSha}:refs/heads/${newName}`])
   await git(cwd, ['push', `--force-with-lease=refs/heads/${oldName}:${serverSha}`, '--', remote, `:refs/heads/${oldName}`])
@@ -516,7 +517,7 @@ export async function renameRemoteBranch(cwd: string, remote: string, oldName: s
 
 export async function deleteRemoteBranch(cwd: string, remote: string, branch: string): Promise<void> {
   const serverSha = await lsRemoteBranch(cwd, remote, branch)
-  if (!serverSha) throw new Error(`На сервере нет ветки ${branch}`)
+  if (!serverSha) throw new Error(t('На сервере нет ветки {branch}', { branch }))
   await git(cwd, ['push', `--force-with-lease=refs/heads/${branch}:${serverSha}`, '--', remote, `:refs/heads/${branch}`])
   await runGit(cwd, ['update-ref', '-d', `refs/remotes/${remote}/${branch}`])
 }

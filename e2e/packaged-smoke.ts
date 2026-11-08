@@ -19,7 +19,7 @@ git('config', 'user.email', 'test@example.com')
 writeFileSync(join(repo, 'a.txt'), 'a\n')
 git('add', '.')
 git('commit', '-q', '-m', 'Коммит для проверки')
-writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo] }))
+writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo], language: 'ru' }))
 // The dialog for passwords relies on helper files the app writes and starts through git, which only
 // a packaged build can prove works.
 const bare = join(root, 'server.git')

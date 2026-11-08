@@ -4,11 +4,12 @@ import { DiffView } from '../components/DiffView'
 import { Avatar, EmptyState, Icon } from '../components/ui'
 import { formatFull, formatRelative, shortSha } from '../format'
 import { useRepo } from '../store'
+import { t } from '../../../shared/i18n'
 
 const LIST_LIMIT = 400
 const BLAME_RENDER_LIMIT = 4000
 const STATUS_TEXT: Partial<Record<FileVersion['status'], string>> = {
-  added: 'создан', deleted: 'удалён', renamed: 'переименован', copied: 'скопирован'
+  added: t('создан'), deleted: t('удалён'), renamed: t('переименован'), copied: t('скопирован')
 }
 
 /** Newer changes get a stronger mark, so fresh edits stand out in a file. */
@@ -46,11 +47,11 @@ function FileHistoryTab({ path, onBlame }: { path: string; onBlame: (rev: string
     return () => { cancelled = true }
   }, [client, version])
 
-  if (!versions) return <div className="diff-loading">Читаю историю файла…</div>
-  if (!versions.length) return <EmptyState icon="history" title="Истории нет">Файл ещё не был закоммичен.</EmptyState>
+  if (!versions) return <div className="diff-loading">{t('Читаю историю файла…')}</div>
+  if (!versions.length) return <EmptyState icon="history" title={t('Истории нет')}>{t('Файл ещё не был закоммичен.')}</EmptyState>
   return (
     <div className="file-history">
-      <div className="file-versions" role="listbox" aria-label="Версии файла">
+      <div className="file-versions" role="listbox" aria-label={t('Версии файла')}>
         {versions.map((item) => (
           <button
             key={item.commit.sha}
@@ -75,9 +76,9 @@ function FileHistoryTab({ path, onBlame }: { path: string; onBlame: (rev: string
       <div className="file-version-diff">
         {version && (
           <div className="file-version-actions">
-            <button className="btn btn-small" onClick={() => jumpTo(version.commit.sha)}><Icon name="history" size={13} />Открыть в истории</button>
+            <button className="btn btn-small" onClick={() => jumpTo(version.commit.sha)}><Icon name="history" size={13} />{t('Открыть в истории')}</button>
             {version.status !== 'deleted' && (
-              <button className="btn btn-small" onClick={() => onBlame(version.commit.sha, shortSha(version.commit.sha))}>Кто менял строки в этой версии</button>
+              <button className="btn btn-small" onClick={() => onBlame(version.commit.sha, shortSha(version.commit.sha))}>{t('Кто менял строки в этой версии')}</button>
             )}
           </div>
         )}
@@ -106,20 +107,20 @@ function BlameTab({ path, rev, label, onBlame }: { path: string; rev: string; la
   const shade = useMemo(() => ageShade(Object.values(blame?.commits ?? {}).map((commit) => commit.authorDate)), [blame])
   const head = (
     <div className="blame-head">
-      <span className="muted">{label ? `Версия ${label}` : 'Текущая версия'}</span>
-      {label && <button className="link" onClick={() => onBlame('HEAD', null)}>Вернуться к текущей</button>}
+      <span className="muted">{label ? t('Версия {label}', { label }) : t('Текущая версия')}</span>
+      {label && <button className="link" onClick={() => onBlame('HEAD', null)}>{t('Вернуться к текущей')}</button>}
     </div>
   )
-  if (error) return <>{head}<div className="banner warn"><Icon name="warning" />В этой версии файла нет: {error.split('\n')[0]}</div></>
-  if (!blame) return <>{head}<div className="diff-loading">Смотрю, кто менял строки…</div></>
+  if (error) return <>{head}<div className="banner warn"><Icon name="warning" />{t('В этой версии файла нет:')} {error.split('\n')[0]}</div></>
+  if (!blame) return <>{head}<div className="diff-loading">{t('Смотрю, кто менял строки…')}</div></>
   if (blame.skipped) {
-    return <>{head}<EmptyState icon="changes" title={blame.skipped === 'binary' ? 'Бинарный файл' : 'Файл слишком большой'}>Построчная история для него не строится.</EmptyState></>
+    return <>{head}<EmptyState icon="changes" title={blame.skipped === 'binary' ? t('Бинарный файл') : t('Файл слишком большой')}>{t('Построчная история для него не строится.')}</EmptyState></>
   }
   const lines = showAll ? blame.lines : blame.lines.slice(0, BLAME_RENDER_LIMIT)
   return (
     <>
       {head}
-      <div className="blame" role="table" aria-label="Кто менял строки">
+      <div className="blame" role="table" aria-label={t('Кто менял строки')}>
         {lines.map((line, index) => {
           const commit = blame.commits[line.sha]
           const startsRun = index === 0 || lines[index - 1].sha !== line.sha
@@ -128,12 +129,12 @@ function BlameTab({ path, rev, label, onBlame }: { path: string; rev: string; la
               <span className="blame-who" role="cell">
                 {startsRun && (
                   <>
-                    <button className="blame-commit" title={`${commit.summary}\n${commit.authorName}, ${formatFull(commit.authorDate)}\nОткрыть в истории`} onClick={() => jumpTo(commit.sha)}>
+                    <button className="blame-commit" title={t('{summary}\n{authorName}, {value}\nОткрыть в истории', { summary: commit.summary, authorName: commit.authorName, value: formatFull(commit.authorDate) })} onClick={() => jumpTo(commit.sha)}>
                       <Avatar name={commit.authorName} email={commit.authorEmail} size={16} />
                       <span className="truncate">{commit.summary}</span>
                       <span className="muted">{formatRelative(commit.authorDate)}</span>
                     </button>
-                    <button className="icon-btn blame-before" title="Как выглядела строка до этого коммита" aria-label="Версия до этого коммита" onClick={() => onBlame(`${commit.sha}^`, `до ${shortSha(commit.sha)}`)}>
+                    <button className="icon-btn blame-before" title={t('Как выглядела строка до этого коммита')} aria-label={t('Версия до этого коммита')} onClick={() => onBlame(`${commit.sha}^`, t('до {value}', { value: shortSha(commit.sha) }))}>
                       <Icon name="undo" size={12} />
                     </button>
                   </>
@@ -146,7 +147,7 @@ function BlameTab({ path, rev, label, onBlame }: { path: string; rev: string; la
         })}
       </div>
       {!showAll && blame.lines.length > BLAME_RENDER_LIMIT && (
-        <button className="btn btn-ghost diff-more" onClick={() => setShowAll(true)}>Показать все строки: {blame.lines.length}</button>
+        <button className="btn btn-ghost diff-more" onClick={() => setShowAll(true)}>{t('Показать все строки:')} {blame.lines.length}</button>
       )}
     </>
   )
@@ -164,8 +165,8 @@ function FilePane({ path }: { path: string }): ReactNode {
       <header className="pane-head">
         <h2 className="truncate" title={path}>{path}</h2>
         <div className="segmented compact" role="tablist">
-          <button role="tab" aria-selected={tab === 'history'} className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>История</button>
-          <button role="tab" aria-selected={tab === 'blame'} className={tab === 'blame' ? 'active' : ''} onClick={() => setTab('blame')}>Кто менял строки</button>
+          <button role="tab" aria-selected={tab === 'history'} className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>{t('История')}</button>
+          <button role="tab" aria-selected={tab === 'blame'} className={tab === 'blame' ? 'active' : ''} onClick={() => setTab('blame')}>{t('Кто менял строки')}</button>
         </div>
       </header>
       <div className="file-pane-body">
@@ -198,7 +199,7 @@ export function FilesView(): ReactNode {
       <div className="files-side">
         <label className="search files-search">
           <Icon name="search" size={14} />
-          <input autoFocus value={query} placeholder="Найти файл" aria-label="Найти файл" onChange={(event) => setQuery(event.target.value)} />
+          <input autoFocus value={query} placeholder={t('Найти файл')} aria-label={t('Найти файл')} onChange={(event) => setQuery(event.target.value)} />
         </label>
         <div className="file-list">
           {shown.slice(0, LIST_LIMIT).map((file) => {
@@ -210,14 +211,14 @@ export function FilesView(): ReactNode {
               </button>
             )
           })}
-          {shown.length > LIST_LIMIT && <p className="hint files-more">Показаны первые {LIST_LIMIT} из {shown.length}. Уточни поиск.</p>}
-          {files && !shown.length && <p className="hint files-more">{files.length ? 'Ничего не найдено.' : 'В репозитории пока нет файлов.'}</p>}
+          {shown.length > LIST_LIMIT && <p className="hint files-more">{t('Показаны первые')} {LIST_LIMIT} {t('из')} {shown.length}{t('. Уточни поиск.')}</p>}
+          {files && !shown.length && <p className="hint files-more">{files.length ? t('Ничего не найдено.') : t('В репозитории пока нет файлов.')}</p>}
         </div>
       </div>
       <main className="files-main">
         {filePath
           ? <FilePane key={filePath} path={filePath} />
-          : <EmptyState icon="file" title="Выбери файл">Здесь видны все его изменения и кто последним менял каждую строку.</EmptyState>}
+          : <EmptyState icon="file" title={t('Выбери файл')}>{t('Здесь видны все его изменения и кто последним менял каждую строку.')}</EmptyState>}
       </main>
     </div>
   )

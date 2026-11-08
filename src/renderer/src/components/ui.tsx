@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type SVGProps } from 'react'
 import { hueOf, initials } from '../format'
+import { t } from '../../../shared/i18n'
 
 const paths: Record<string, ReactNode> = {
   history: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
@@ -79,7 +80,7 @@ export function Modal({ title, onClose, children, footer, wide, extraWide, topmo
       <div className={`modal ${wide ? 'modal-wide' : ''} ${extraWide ? 'modal-xl' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <header className="modal-head">
           <h2>{title}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Закрыть"><Icon name="close" /></button>
+          <button className="icon-btn" onClick={onClose} aria-label={t('Закрыть')}><Icon name="close" /></button>
         </header>
         <div className="modal-body">{children}</div>
         {footer && <footer className="modal-foot">{footer}</footer>}

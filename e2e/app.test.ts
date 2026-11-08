@@ -71,7 +71,7 @@ describe('Chronicle', () => {
     await commitFile(repo, 'src/cache.ts', 'cache\n', 'Добавить кэш')
     await commitFile(repo, 'src/search.ts', 'search\n', 'Добавить поиск')
     await git(repo, ['push', '-q', 'origin', 'main'])
-    writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo] }))
+    writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo], language: 'ru' }))
     app = await electron.launch({ args: ['out/main/index.js', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_RENDERER_URL: '' } })
     page = await app.firstWindow()
     page.on('pageerror', (error) => pageErrors.push(error.message))

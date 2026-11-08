@@ -5,6 +5,7 @@ import { EMPTY_DRAFT, draftChangeCount, type Draft } from '../../shared/draft'
 import { branchSettingsUrl } from '../../shared/remote-url'
 import type { Commit } from '../../shared/types'
 import { appApi, repoClient } from './api'
+import { t } from '../../shared/i18n'
 
 const PAGE = 5000
 const POLL_MS = 5000
@@ -161,14 +162,14 @@ export function RepoProvider({ repo, onClose, onOpen, children }: { repo: string
       const forge = forgeRef.current
       if (issue === 'protected') {
         const settings = forge && branchSettingsUrl(forge)
-        toast('error', issueSummary(issue), settings ? { label: 'Настройки защиты', run: () => void appApi.openExternal(settings) } : undefined)
+        toast('error', issueSummary(issue), settings ? { label: t('Настройки защиты'), run: () => void appApi.openExternal(settings) } : undefined)
       } else if (issue === 'offline' || issue === 'ssh-missing') {
         toast('error', issueSummary(issue, forge?.host))
       } else if (issue && forge) {
         setAccess({ issue, retry: () => void runRef.current(label, action) })
       } else if (LEFT_CONFLICTS.test(message)) {
         setView('changes')
-        toast('info', 'Есть конфликты. Выбери для каждого файла, что должно получиться, затем заверши операцию.')
+        toast('info', t('Есть конфликты. Выбери для каждого файла, что должно получиться, затем заверши операцию.'))
       } else {
         toast('error', message)
       }
@@ -231,7 +232,7 @@ export function RepoProvider({ repo, onClose, onOpen, children }: { repo: string
   useEffect(() => {
     if (!staleNotice) return
     setStaleNotice(false)
-    toast('info', 'Ветки изменились вне приложения, поэтому часть черновика сброшена.')
+    toast('info', t('Ветки изменились вне приложения, поэтому часть черновика сброшена.'))
   }, [staleNotice, toast])
 
   const setDraft = useCallback((update: (draft: Draft) => Draft) => setDraftState(update), [])

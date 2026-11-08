@@ -8,6 +8,7 @@ import { MergeDialog } from './MergeDialogs'
 import { RebaseDialog } from './RebaseDialog'
 import { AddWorktreeDialog, RepoExtrasSections } from './RepoExtras'
 import { ContextMenu, Icon, type MenuItem } from './ui'
+import { t } from '../../../shared/i18n'
 
 function TrackBadge({ info }: { info: RefInfo }): ReactNode {
   if (!info.ahead && !info.behind) return null
@@ -52,12 +53,12 @@ export function Sidebar(): ReactNode {
   const label = requestLabel(forge?.kind ?? null)
 
   const nav: { id: View; label: string; icon: string; count?: number }[] = [
-    { id: 'history', label: 'История', icon: 'history' },
-    { id: 'changes', label: 'Изменения', icon: 'changes', count: changes },
-    { id: 'files', label: 'Файлы', icon: 'file' },
+    { id: 'history', label: t('История'), icon: 'history' },
+    { id: 'changes', label: t('Изменения'), icon: 'changes', count: changes },
+    { id: 'files', label: t('Файлы'), icon: 'file' },
     { id: 'stash', label: 'Stash', icon: 'stash', count: snapshot?.stashes.length },
-    { id: 'schedule', label: 'Публикации', icon: 'schedule', count: pending },
-    { id: 'journal', label: 'Журнал', icon: 'journal' }
+    { id: 'schedule', label: t('Публикации'), icon: 'schedule', count: pending },
+    { id: 'journal', label: t('Журнал'), icon: 'journal' }
   ]
 
   const branchMenu = (event: MouseEvent, branch: RefInfo): void => {
@@ -65,25 +66,25 @@ export function Sidebar(): ReactNode {
     setMenu({
       x: event.clientX, y: event.clientY,
       items: [
-        { label: 'Перейти на ветку', icon: 'branch', disabled: branch.isHead, run: () => void run('Переключаюсь', () => client.checkout(branch.name)) },
-        { label: 'Переименовать…', run: () => show(<RenameBranchDialog name={branch.name} upstream={branch.upstream} isDefault={defaults.has(branch.upstream ?? '')} />) },
-        { label: 'Отправить на сервер…', icon: 'push', run: () => show(<PushDialog branch={branch.name} />) },
-        { label: 'Перенести на другую ветку…', icon: 'branch', run: () => show(<RebaseDialog branch={branch.name} />) },
+        { label: t('Перейти на ветку'), icon: 'branch', disabled: branch.isHead, run: () => void run(t('Переключаюсь'), () => client.checkout(branch.name)) },
+        { label: t('Переименовать…'), run: () => show(<RenameBranchDialog name={branch.name} upstream={branch.upstream} isDefault={defaults.has(branch.upstream ?? '')} />) },
+        { label: t('Отправить на сервер…'), icon: 'push', run: () => show(<PushDialog branch={branch.name} />) },
+        { label: t('Перенести на другую ветку…'), icon: 'branch', run: () => show(<RebaseDialog branch={branch.name} />) },
         ...(forge && branch.upstream?.startsWith(`${forge.remote}/`) && newRequestUrl(forge, branch.upstream.slice(forge.remote.length + 1)) ? [{
-          label: `Создать ${label} на сайте`,
+          label: t('Создать {label} на сайте', { label }),
           icon: 'external',
           run: () => void appApi.openExternal(newRequestUrl(forge, branch.upstream!.slice(forge.remote.length + 1))!)
         }] : []),
-        { label: `Влить в ${status?.head ?? 'текущую'}`, disabled: branch.isHead || !status?.head, run: () => show(<MergeDialog target={branch.name} />) },
+        { label: t('Влить в {value}', { value: status?.head ?? t('текущую') }), disabled: branch.isHead || !status?.head, run: () => show(<MergeDialog target={branch.name} />) },
         { separator: true },
         {
-          label: 'Удалить…', icon: 'trash', danger: true, disabled: branch.isHead,
+          label: t('Удалить…'), icon: 'trash', danger: true, disabled: branch.isHead,
           run: () => show(<ConfirmDialog
-            title="Удалить ветку"
+            title={t('Удалить ветку')}
             danger
-            confirmLabel="Удалить"
-            body={<>Локальная ветка <b>{branch.name}</b> будет удалена. Сервер не изменится. Если в ней есть невлитые коммиты, найти их можно будет через reflog.</>}
-            onConfirm={() => void run('Удаляю ветку', () => client.deleteBranch(branch.name, true))}
+            confirmLabel={t('Удалить')}
+            body={<>{t('Локальная ветка')} <b>{branch.name}</b> {t('будет удалена. Сервер не изменится. Если в ней есть невлитые коммиты, найти их можно будет через reflog.')}</>}
+            onConfirm={() => void run(t('Удаляю ветку'), () => client.deleteBranch(branch.name, true))}
           />)
         }
       ]
@@ -97,22 +98,22 @@ export function Sidebar(): ReactNode {
     setMenu({
       x: event.clientX, y: event.clientY,
       items: [
-        { label: 'Создать локальную ветку', icon: 'branch', run: () => void run('Переключаюсь', () => client.checkoutRemoteBranch(ref.name)) },
-        { label: 'Переименовать на сервере…', run: () => show(<RenameRemoteBranchDialog remote={remote} name={name} />) },
+        { label: t('Создать локальную ветку'), icon: 'branch', run: () => void run(t('Переключаюсь'), () => client.checkoutRemoteBranch(ref.name)) },
+        { label: t('Переименовать на сервере…'), run: () => show(<RenameRemoteBranchDialog remote={remote} name={name} />) },
         ...(forge?.remote === remote && defaultBranchSettingsUrl(forge) ? [{
-          label: 'Сменить основную ветку на сайте',
+          label: t('Сменить основную ветку на сайте'),
           icon: 'external',
           run: () => void appApi.openExternal(defaultBranchSettingsUrl(forge)!)
         }] : []),
         { separator: true },
         {
-          label: 'Удалить с сервера…', icon: 'trash', danger: true, disabled: isDefault,
+          label: t('Удалить с сервера…'), icon: 'trash', danger: true, disabled: isDefault,
           run: () => show(<ConfirmDialog
-            title="Удалить ветку с сервера"
+            title={t('Удалить ветку с сервера')}
             danger
-            confirmLabel="Удалить с сервера"
-            body={<>Ветка <b>{name}</b> будет удалена на <b>{remote}</b>. Открытые Pull Request и Merge Request от неё могут закрыться.</>}
-            onConfirm={() => void run('Удаляю с сервера', () => client.deleteRemoteBranch(remote, name))}
+            confirmLabel={t('Удалить с сервера')}
+            body={<>{t('Ветка')} <b>{name}</b> {t('будет удалена на')} <b>{remote}</b>{t('. Открытые Pull Request и Merge Request от неё могут закрыться.')}</>}
+            onConfirm={() => void run(t('Удаляю с сервера'), () => client.deleteRemoteBranch(remote, name))}
           />)
         }
       ]
@@ -126,12 +127,12 @@ export function Sidebar(): ReactNode {
       x: event.clientX, y: event.clientY,
       items: [
         {
-          label: 'Удалить локально…', icon: 'trash', danger: true,
-          run: () => show(<ConfirmDialog title="Удалить тег" danger confirmLabel="Удалить" body={<>Тег <b>{tag.name}</b> будет удалён локально.</>} onConfirm={() => void run('Удаляю тег', () => client.deleteTag(tag.name))} />)
+          label: t('Удалить локально…'), icon: 'trash', danger: true,
+          run: () => show(<ConfirmDialog title={t('Удалить тег')} danger confirmLabel={t('Удалить')} body={<>{t('Тег')} <b>{tag.name}</b> {t('будет удалён локально.')}</>} onConfirm={() => void run(t('Удаляю тег'), () => client.deleteTag(tag.name))} />)
         },
         ...(remote ? [{
-          label: `Удалить также с ${remote}…`, icon: 'trash', danger: true,
-          run: () => show(<ConfirmDialog title="Удалить тег с сервера" danger confirmLabel="Удалить везде" body={<>Тег <b>{tag.name}</b> будет удалён локально и на <b>{remote}</b>.</>} onConfirm={() => void run('Удаляю тег', () => client.deleteTag(tag.name, remote))} />)
+          label: t('Удалить также с {remote}…', { remote }), icon: 'trash', danger: true,
+          run: () => show(<ConfirmDialog title={t('Удалить тег с сервера')} danger confirmLabel={t('Удалить везде')} body={<>{t('Тег')} <b>{tag.name}</b> {t('будет удалён локально и на')} <b>{remote}</b>.</>} onConfirm={() => void run(t('Удаляю тег'), () => client.deleteTag(tag.name, remote))} />)
         }] : [])
       ]
     })
@@ -139,7 +140,7 @@ export function Sidebar(): ReactNode {
 
   return (
     <aside className="sidebar">
-      <nav className="side-nav" aria-label="Разделы">
+      <nav className="side-nav" aria-label={t('Разделы')}>
         {nav.map((item) => (
           <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => setView(item.id)}>
             <Icon name={item.icon} />{item.label}
@@ -149,13 +150,13 @@ export function Sidebar(): ReactNode {
       </nav>
       <div className="side-scroll">
         <Section
-          title="Ветки"
+          title={t('Ветки')}
           count={branches.length}
-          action={<button className="icon-btn" title="Новая ветка" aria-label="Новая ветка" onClick={() => show(<PromptDialog
-            title="Новая ветка"
-            label="Имя ветки"
-            confirmLabel="Создать и перейти"
-            onSubmit={(name) => void run('Создаю ветку', () => client.createBranch(name, 'HEAD', true))}
+          action={<button className="icon-btn" title={t('Новая ветка')} aria-label={t('Новая ветка')} onClick={() => show(<PromptDialog
+            title={t('Новая ветка')}
+            label={t('Имя ветки')}
+            confirmLabel={t('Создать и перейти')}
+            onSubmit={(name) => void run(t('Создаю ветку'), () => client.createBranch(name, 'HEAD', true))}
           />)}><Icon name="plus" size={13} /></button>}
         >
           {branches.map((branch) => (
@@ -164,7 +165,7 @@ export function Sidebar(): ReactNode {
               className={`side-item ${branch.isHead ? 'active' : ''}`}
               title={branch.name}
               onClick={() => jumpTo(branch.target)}
-              onDoubleClick={() => { if (!branch.isHead) void run('Переключаюсь', () => client.checkout(branch.name)) }}
+              onDoubleClick={() => { if (!branch.isHead) void run(t('Переключаюсь'), () => client.checkout(branch.name)) }}
               onContextMenu={(event) => branchMenu(event, branch)}
             >
               {branch.isHead ? <span className="head-dot" /> : <Icon name="branch" size={13} />}
@@ -181,14 +182,14 @@ export function Sidebar(): ReactNode {
                 <button key={ref.ref} className="side-item" title={ref.name} onClick={() => jumpTo(ref.target)} onContextMenu={(event) => remoteBranchMenu(event, remote.name, ref)}>
                   <Icon name="cloud" size={13} />
                   <span className="truncate">{ref.name.slice(remote.name.length + 1)}</span>
-                  {defaults.has(ref.name) && <span className="pill small">основная</span>}
+                  {defaults.has(ref.name) && <span className="pill small">{t('основная')}</span>}
                 </button>
               ))}
             </Section>
           )
         })}
         <RepoExtrasSections Section={Section} />
-        <Section title="Теги" count={tags.length}>
+        <Section title={t('Теги')} count={tags.length}>
           {tags.map((tag) => (
             <button key={tag.ref} className="side-item" title={tag.name} onClick={() => jumpTo(tag.target)} onContextMenu={(event) => tagMenu(event, tag)}>
               <Icon name="tag" size={13} />
@@ -198,23 +199,23 @@ export function Sidebar(): ReactNode {
         </Section>
       </div>
       <div className="side-tools">
-        <button onClick={() => { setView('history'); show(<ReplaceAuthorDialog />) }}><Icon name="users" size={14} />Заменить автора</button>
-        <button onClick={() => show(<CleanHistoryDialog />)}><Icon name="broom" size={14} />Очистка истории</button>
-        <button onClick={() => show(<AddWorktreeDialog onDone={() => void reload()} />)}><Icon name="folder" size={14} />Ветка в отдельной папке</button>
+        <button onClick={() => { setView('history'); show(<ReplaceAuthorDialog />) }}><Icon name="users" size={14} />{t('Заменить автора')}</button>
+        <button onClick={() => show(<CleanHistoryDialog />)}><Icon name="broom" size={14} />{t('Очистка истории')}</button>
+        <button onClick={() => show(<AddWorktreeDialog onDone={() => void reload()} />)}><Icon name="folder" size={14} />{t('Ветка в отдельной папке')}</button>
         {requestsPage && (
-          <button onClick={() => void appApi.openExternal(requestsPage)}><Icon name="external" size={14} />{label} на сайте</button>
+          <button onClick={() => void appApi.openExternal(requestsPage)}><Icon name="external" size={14} />{label} {t('на сайте')}</button>
         )}
         {!remotes.length && (
           <button onClick={() => show(<PromptDialog
-            title="Добавить remote"
-            label="URL репозитория"
+            title={t('Добавить remote')}
+            label={t('URL репозитория')}
             placeholder="git@gitlab.com:team/project.git"
-            confirmLabel="Добавить как origin"
-            onSubmit={(url) => void run('Добавляю remote', async () => {
+            confirmLabel={t('Добавить как origin')}
+            onSubmit={(url) => void run(t('Добавляю remote'), async () => {
               await client.addRemote('origin', url)
               await client.fetchAll()
             })}
-          />)}><Icon name="cloud" size={14} />Добавить remote</button>
+          />)}><Icon name="cloud" size={14} />{t('Добавить remote')}</button>
         )}
       </div>
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}

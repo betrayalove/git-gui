@@ -19,6 +19,7 @@ import { ScheduleView } from './views/ScheduleView'
 import { SettingsDialog } from './views/SettingsDialog'
 import { StashView } from './views/StashView'
 import { Welcome } from './views/Welcome'
+import { t, translateRecord } from '../../shared/i18n'
 
 function baseName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
@@ -40,9 +41,9 @@ function Toolbar(): ReactNode {
         {status?.head ?? (status?.detached ? `HEAD ${status.headSha?.slice(0, 7)}` : '…')}
       </span>
       <div className="toolbar-actions">
-        <button className="tool" onClick={() => void run('Обновляю', async () => {
+        <button className="tool" onClick={() => void run(t('Обновляю'), async () => {
           await client.fetchAll()
-          toast('success', 'Данные с сервера обновлены')
+          toast('success', t('Данные с сервера обновлены'))
         })}><Icon name="fetch" />Fetch</button>
         <button
           className="tool"
@@ -58,26 +59,26 @@ function Toolbar(): ReactNode {
         <button
           className="tool"
           disabled={!lastApplied}
-          title={lastApplied ? `Отменить: ${lastApplied.description}` : 'Нет правок для отмены'}
-          onClick={() => void run('Отменяю', () => client.undoEntry(lastApplied!.id))}
-        ><Icon name="undo" />Отменить</button>
+          title={lastApplied ? t('Отменить: {description}', { description: translateRecord(lastApplied.description) }) : t('Нет правок для отмены')}
+          onClick={() => void run(t('Отменяю'), () => client.undoEntry(lastApplied!.id))}
+        ><Icon name="undo" />{t('Отменить')}</button>
       </div>
       <div className="toolbar-right">
         {busy && <span className="busy"><span className="spinner" />{busy}…</span>}
-        <button className="icon-btn" title="Настройки" aria-label="Настройки" onClick={() => show(<SettingsDialog onClose={close} />)}><Icon name="gear" /></button>
+        <button className="icon-btn" title={t('Настройки')} aria-label={t('Настройки')} onClick={() => show(<SettingsDialog onClose={close} />)}><Icon name="gear" /></button>
         {view === 'history' && (
           <label className="search">
             <Icon name="search" size={14} />
             <input
               value={search}
-              placeholder={searchMode === 'content' ? 'Поиск в изменениях' : 'Поиск по истории'}
-              aria-label={searchMode === 'content' ? 'Поиск в изменениях' : 'Поиск по истории'}
+              placeholder={searchMode === 'content' ? t('Поиск в изменениях') : t('Поиск по истории')}
+              aria-label={searchMode === 'content' ? t('Поиск в изменениях') : t('Поиск по истории')}
               onChange={(event) => setSearch(event.target.value)}
             />
             <button
               className={`search-mode ${searchMode === 'content' ? 'active' : ''}`}
               aria-pressed={searchMode === 'content'}
-              title={searchMode === 'content' ? 'Ищу в изменённых строках. Нажми, чтобы искать в сообщениях' : 'Ищу в сообщениях, авторах и SHA. Нажми, чтобы искать в изменённых строках'}
+              title={searchMode === 'content' ? t('Ищу в изменённых строках. Нажми, чтобы искать в сообщениях') : t('Ищу в сообщениях, авторах и SHA. Нажми, чтобы искать в изменённых строках')}
               onClick={() => setSearchMode(searchMode === 'content' ? 'message' : 'content')}
             >{'{ }'}</button>
           </label>
@@ -94,11 +95,11 @@ function DraftBar(): ReactNode {
   return (
     <div className="draft-bar" role="status">
       <span className="draft-dot" />
-      <b>Черновик: {plural(draftCount, 'правка', 'правки', 'правок')}</b>
-      <span className="muted">Репозиторий пока не изменён</span>
+      <b>{t('Черновик:')} {plural(draftCount, 'правка', 'правки', 'правок')}</b>
+      <span className="muted">{t('Репозиторий пока не изменён')}</span>
       <span className="spacer" />
-      <button className="btn btn-ghost" onClick={() => setDraft(() => EMPTY_DRAFT)}>Сбросить</button>
-      <button className="btn btn-primary" onClick={() => show(<ReviewDialog plan={buildPlan(commits, draft)} />)}>Предпросмотр и применение</button>
+      <button className="btn btn-ghost" onClick={() => setDraft(() => EMPTY_DRAFT)}>{t('Сбросить')}</button>
+      <button className="btn btn-primary" onClick={() => show(<ReviewDialog plan={buildPlan(commits, draft)} />)}>{t('Предпросмотр и применение')}</button>
     </div>
   )
 }
@@ -111,7 +112,7 @@ function Toasts(): ReactNode {
         <div key={toast.id} className={`toast toast-${toast.kind}`}>
           <span>{toast.text}</span>
           {toast.action && <button className="link" onClick={() => { dismissToast(toast.id); toast.action!.run() }}>{toast.action.label}</button>}
-          <button className="icon-btn" aria-label="Закрыть" onClick={() => dismissToast(toast.id)}><Icon name="close" size={13} /></button>
+          <button className="icon-btn" aria-label={t('Закрыть')} onClick={() => dismissToast(toast.id)}><Icon name="close" size={13} /></button>
         </div>
       ))}
     </div>
@@ -128,7 +129,7 @@ function Workspace(): ReactNode {
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && lastApplied) {
         event.preventDefault()
-        void run('Отменяю', () => client.undoEntry(lastApplied.id))
+        void run(t('Отменяю'), () => client.undoEntry(lastApplied.id))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -184,16 +185,35 @@ function UpdateNotice(): ReactNode {
   if (!update?.url) return null
   return (
     <div className="update-notice" role="status">
-      <span>Вышла версия {update.latest}</span>
-      <button className="link" onClick={() => void appApi.openExternal(update.url!)}>Скачать</button>
-      <button className="icon-btn" aria-label="Скрыть" onClick={() => setUpdate(null)}><Icon name="close" size={13} /></button>
+      <span>{t('Вышла версия')} {update.latest}</span>
+      <button className="link" onClick={() => void appApi.openExternal(update.url!)}>{t('Скачать')}</button>
+      <button className="icon-btn" aria-label={t('Скрыть')} onClick={() => setUpdate(null)}><Icon name="close" size={13} /></button>
     </div>
   )
 }
 
+const OPEN_REPO_KEY = 'chronicle:open-repository'
+
+/** The open repository survives a reload of the window, such as after switching the language. */
+function readOpenRepo(): string | null {
+  try {
+    return sessionStorage.getItem(OPEN_REPO_KEY)
+  } catch {
+    return null
+  }
+}
+
 export function App(): ReactNode {
-  const [repo, setRepo] = useState<string | null>(null)
+  const [repo, setRepo] = useState<string | null>(readOpenRepo)
   const close = useCallback(() => setRepo(null), [])
+  useEffect(() => {
+    try {
+      if (repo) sessionStorage.setItem(OPEN_REPO_KEY, repo)
+      else sessionStorage.removeItem(OPEN_REPO_KEY)
+    } catch {
+      // Without storage a reload only returns to the start screen.
+    }
+  }, [repo])
   return (
     <>
       {repo ? (

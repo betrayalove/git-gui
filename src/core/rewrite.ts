@@ -18,6 +18,7 @@ import type {
 import { git, GitError, gitLine, isAncestor, revParse, runGit, spawnGit } from './git'
 import { exclusive } from './exclusive'
 import { commonDir, readCommits, readOperation, readRefs, readStatus } from './read'
+import { t } from '../shared/i18n'
 
 
 interface RawCommit {
@@ -75,12 +76,12 @@ function utf8ToLatin1(text: string): string {
 }
 
 function assertIdentityField(value: string, label: string): void {
-  if (/[<>\n\0]/.test(value)) throw new Error(`${label} содержит недопустимые символы: ${value}`)
+  if (/[<>\n\0]/.test(value)) throw new Error(t('{label} содержит недопустимые символы: {value}', { label, value }))
 }
 
 function formatGitDate(iso: string): string {
   const millis = Date.parse(iso)
-  if (Number.isNaN(millis)) throw new Error(`Некорректная дата: ${iso}`)
+  if (Number.isNaN(millis)) throw new Error(t('Некорректная дата: {iso}', { iso }))
   const offset = /([+-])(\d{2}):?(\d{2})$/.exec(iso)
   const zone = offset ? `${offset[1]}${offset[2]}${offset[3]}` : '+0000'
   return `${Math.floor(millis / 1000)} ${zone}`
@@ -88,8 +89,8 @@ function formatGitDate(iso: string): string {
 
 function editIdentity(line: string, name?: string, email?: string, date?: string): string {
   const match = /^(.*) <(.*)> (\d+ [+-]\d{4})$/s.exec(line)
-  if (!match) throw new Error(`Не удалось разобрать строку автора: ${line}`)
-  if (name !== undefined) assertIdentityField(name, 'Имя')
+  if (!match) throw new Error(t('Не удалось разобрать строку автора: {line}', { line }))
+  if (name !== undefined) assertIdentityField(name, t('Имя'))
   if (email !== undefined) assertIdentityField(email, 'Email')
   const newName = name !== undefined ? utf8ToLatin1(name) : match[1]
   const newEmail = email !== undefined ? utf8ToLatin1(email) : match[2]
@@ -118,7 +119,7 @@ function applyEdit(commit: RawCommit, edit: CommitEdit | undefined): void {
   normalizeEncoding(commit)
   if (edit.message !== undefined) {
     const message = edit.message.replace(/\s+$/, '')
-    if (!message) throw new Error('Сообщение коммита не может быть пустым')
+    if (!message) throw new Error(t('Сообщение коммита не может быть пустым'))
     commit.message = `${utf8ToLatin1(message)}\n`
   }
   if (edit.authorName !== undefined || edit.authorEmail !== undefined || edit.authorDate !== undefined) {
@@ -138,7 +139,7 @@ async function readObjects(cwd: string, shas: string[]): Promise<Map<string, { t
     const newline = stdout.indexOf(10, offset)
     const header = stdout.subarray(offset, newline).toString('latin1')
     const [, type, size] = header.split(' ')
-    if (type === undefined) throw new Error(`Объект не найден: ${sha}`)
+    if (type === undefined) throw new Error(t('Объект не найден: {sha}', { sha }))
     const start = newline + 1
     const end = start + Number(size)
     objects.set(sha, { type, data: stdout.subarray(start, end) })
@@ -196,7 +197,7 @@ class ObjectBatch {
       const raw = await hashObjects(this.cwd, this.type, ['--no-filters', '--stdin-paths'], `${paths.join('\n')}\n`)
       const written = raw.split('\n').filter(Boolean)
       this.pending.forEach((item, index) => {
-        if (written[index] !== item.sha) throw new Error(`Git записал другой объект: ${written[index]} вместо ${item.sha}`)
+        if (written[index] !== item.sha) throw new Error(t('Git записал другой объект: {value} вместо {sha}', { value: written[index], sha: item.sha }))
       })
       this.pending = []
     } finally {
@@ -252,7 +253,7 @@ async function signCommit(cwd: string, commit: RawCommit): Promise<string | null
       }
     })
   } catch (error) {
-    throw new Error(`Не удалось подписать коммит: ${(error as Error).message}`)
+    throw new Error(t('Не удалось подписать коммит: {value}', { value: (error as Error).message }))
   }
   const written = (await runGit(cwd, ['cat-file', 'commit', sha])).stdout
   return stripSignatureHeader(written).equals(serializeCommit(commit)) ? sha : null
@@ -280,7 +281,7 @@ class ObjectReader {
       this.drain()
     })
     this.child.on('close', () => {
-      for (const waiter of this.waiting.splice(0)) waiter.reject(new Error('git cat-file завершился раньше времени'))
+      for (const waiter of this.waiting.splice(0)) waiter.reject(new Error(t('git cat-file завершился раньше времени')))
     })
   }
 
@@ -292,7 +293,7 @@ class ObjectReader {
       const [name, type, size] = header.split(' ')
       if (type === undefined || type === 'missing') {
         this.buffer = this.buffer.subarray(newline + 1)
-        this.waiting.shift()!.reject(new Error(`Объект не найден: ${name}`))
+        this.waiting.shift()!.reject(new Error(t('Объект не найден: {name}', { name })))
         continue
       }
       const end = newline + 1 + Number(size)
@@ -442,7 +443,7 @@ class TreePruner {
   ) {
     this.hashLength = algorithm === 'sha256' ? 32 : 20
     this.paths = paths.map((path) => path.replace(/\\/g, '/').split('/').filter(Boolean))
-    if (this.paths.some((parts) => parts.length === 0)) throw new Error('Пустой путь для удаления')
+    if (this.paths.some((parts) => parts.length === 0)) throw new Error(t('Пустой путь для удаления'))
   }
 
   /** Returns the pruned tree, or null when the tree became empty. */
@@ -492,22 +493,22 @@ function validateSequence(
   const inChain = new Set(chain)
   const seen = new Set<string>()
   for (const item of todo) {
-    if (!inChain.has(item.sha)) throw new Error(`Коммит ${item.sha.slice(0, 8)} не входит в выбранный участок`)
-    if (seen.has(item.sha)) throw new Error(`Коммит ${item.sha.slice(0, 8)} указан дважды`)
+    if (!inChain.has(item.sha)) throw new Error(t('Коммит {value} не входит в выбранный участок', { value: item.sha.slice(0, 8) }))
+    if (seen.has(item.sha)) throw new Error(t('Коммит {value} указан дважды', { value: item.sha.slice(0, 8) }))
     seen.add(item.sha)
   }
-  if (seen.size !== chain.length) throw new Error('В плане указаны не все коммиты участка')
+  if (seen.size !== chain.length) throw new Error(t('В плане указаны не все коммиты участка'))
   for (const sha of chain) {
     if ((commits.get(sha)?.parents.length ?? 0) > 1) {
-      throw new Error(`Участок содержит merge-коммит ${sha.slice(0, 8)}, его нельзя переставлять`)
+      throw new Error(t('Участок содержит merge-коммит {value}, его нельзя переставлять', { value: sha.slice(0, 8) }))
     }
   }
   const firstKept = todo.find((item) => item.action !== 'drop')
   if (firstKept && firstKept.action !== 'pick') {
-    throw new Error('Первый оставшийся коммит участка нельзя объединить с предыдущим')
+    throw new Error(t('Первый оставшийся коммит участка нельзя объединить с предыдущим'))
   }
   if (todo.some((item) => item.split && item.action !== 'pick')) {
-    throw new Error('Разделённый коммит нельзя удалять или объединять')
+    throw new Error(t('Разделённый коммит нельзя удалять или объединять'))
   }
 }
 
@@ -564,21 +565,21 @@ export async function previewRewrite(
   const seeds = new Set<string>(Object.keys(edits))
   let chain: string[] = []
   const onto = plan.sequence?.onto ? await revParse(cwd, plan.sequence.onto) : null
-  if (plan.sequence?.onto && !onto) throw new Error(`Не найден коммит ${plan.sequence.onto}`)
+  if (plan.sequence?.onto && !onto) throw new Error(t('Не найден коммит {onto}', { onto: plan.sequence.onto }))
   if (onto && (await isAncestor(cwd, plan.sequence!.tip, onto))) {
-    throw new Error('Ветка уже входит в историю целевой ветки, переносить нечего')
+    throw new Error(t('Ветка уже входит в историю целевой ветки, переносить нечего'))
   }
   if (plan.sequence) {
     chain = await chainBetween(cwd, plan.sequence.base, plan.sequence.tip)
-    if (chain.at(-1) !== plan.sequence.tip) throw new Error('Вершина участка указана неверно')
+    if (chain.at(-1) !== plan.sequence.tip) throw new Error(t('Вершина участка указана неверно'))
     if (chain.length && (parentsOf.get(chain[0])?.[0] ?? null) !== plan.sequence.base) {
-      throw new Error('Основание участка указано неверно')
+      throw new Error(t('Основание участка указано неверно'))
     }
     chain.forEach((sha) => seeds.add(sha))
   }
   if (pruner) order.forEach((sha) => seeds.add(sha))
   for (const sha of seeds) {
-    if (!parentsOf.has(sha)) throw new Error(`Коммит ${sha.slice(0, 8)} недоступен из локальных веток и тегов`)
+    if (!parentsOf.has(sha)) throw new Error(t('Коммит {value} недоступен из локальных веток и тегов', { value: sha.slice(0, 8) }))
   }
   const affected = new Set<string>(seeds)
   for (const sha of order) {
@@ -597,7 +598,7 @@ export async function previewRewrite(
   const treeOf = (sha: string | null): string => {
     if (!sha) return emptyTree
     const known = treeOfNew.get(sha) ?? commits.get(sha)?.tree
-    if (!known) throw new Error(`Неизвестное дерево коммита ${sha}`)
+    if (!known) throw new Error(t('Неизвестное дерево коммита {sha}', { sha }))
     return known
   }
 
@@ -705,7 +706,7 @@ export async function previewRewrite(
         continue
       }
       // Squash and fixup replay onto the group's tree without creating an intermediate commit.
-      if (!group) throw new Error('Нет коммита, с которым можно объединить')
+      if (!group) throw new Error(t('Нет коммита, с которым можно объединить'))
       const parentTree = source.parents.length ? treeOf(source.parents[0]) : emptyTree
       let tree: string | null = source.tree
       if (parentTree !== group.tree) {
@@ -778,11 +779,11 @@ export async function previewRewrite(
     const data = await tagReader.read(sha)
     const text = data.toString('latin1')
     const head = /^object (\S+)\ntype (\S+)\n/.exec(text)
-    if (!head) throw new Error(`Не удалось разобрать тег ${name}`)
+    if (!head) throw new Error(t('Не удалось разобрать тег {name}', { name }))
     const inner = head[2] === 'tag' ? await rewriteTag(head[1], name) : mapped(head[1])
     if (!inner || inner === head[1]) return sha
     const stripped = stripTagSignature(data)
-    if (stripped.length !== data.length) warnings.push(`Подпись тега ${name} будет снята`)
+    if (stripped.length !== data.length) warnings.push(t('Подпись тега {name} будет снята', { name }))
     const rest = stripped.toString('latin1').slice(`object ${head[1]}\n`.length)
     return tagBatch.add(Buffer.from(`object ${inner}\n${rest}`, 'latin1'))
   }
@@ -794,8 +795,8 @@ export async function previewRewrite(
       if (target === null) {
         blockers.push(
           ref.kind === 'branch'
-            ? `В ветке ${ref.name} не останется коммитов`
-            : `Тег ${ref.name} не на что перенести, сначала удали его`
+            ? t('В ветке {name} не останется коммитов', { name: ref.name })
+            : t('Тег {name} не на что перенести, сначала удали его', { name: ref.name })
         )
         continue
       }
@@ -821,7 +822,7 @@ export async function previewRewrite(
 
   // Environment checks.
   const operation = await readOperation(cwd)
-  if (operation) blockers.push(`Сначала заверши или отмени текущую операцию: ${operation}`)
+  if (operation) blockers.push(t('Сначала заверши или отмени текущую операцию: {operation}', { operation }))
   const status = await readStatus(cwd)
   let worktreeChanges = false
   const headUpdate = refUpdates.find((update) => update.kind === 'branch' && status.head === update.name)
@@ -829,30 +830,30 @@ export async function previewRewrite(
     worktreeChanges = treeOf(headUpdate.afterCommit) !== treeOf(headUpdate.beforeCommit)
     const dirty = status.files.some((file) => file.unstaged !== 'untracked')
     if (worktreeChanges && dirty) {
-      blockers.push('Содержимое текущей ветки изменится, а в рабочей папке есть незакоммиченные правки. Сохрани их в stash или закоммить.')
+      blockers.push(t('Содержимое текущей ветки изменится, а в рабочей папке есть незакоммиченные правки. Сохрани их в stash или закоммить.'))
     }
   }
   if (status.detached && headSha && mapping.has(headSha) && mapping.get(headSha) !== headSha) {
-    warnings.push('HEAD отсоединён и останется на старом коммите')
+    warnings.push(t('HEAD отсоединён и останется на старом коммите'))
   }
   const worktrees = await git(cwd, ['worktree', 'list', '--porcelain'])
   const others = worktrees.split('\n\n').slice(1)
   for (const block of others) {
     const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1]
     if (branch && refUpdates.some((update) => update.kind === 'branch' && update.name === branch)) {
-      blockers.push(`Ветка ${branch} открыта в другом worktree`)
+      blockers.push(t('Ветка {branch} открыта в другом worktree', { branch }))
     }
   }
   if (refUpdates.some((update) => update.needsForcePush)) {
-    warnings.push('Изменятся уже запушенные коммиты. После применения потребуется force-push.')
+    warnings.push(t('Изменятся уже запушенные коммиты. После применения потребуется force-push.'))
   }
   if (pruner) {
-    warnings.push('Старые версии файлов останутся в резервных копиях, reflog и stash, пока ты их не очистишь. Утёкшие секреты нужно отозвать.')
+    warnings.push(t('Старые версии файлов останутся в резервных копиях, reflog и stash, пока ты их не очистишь. Утёкшие секреты нужно отозвать.'))
   }
-  if (alreadyThere) warnings.push(`Изменения из коммитов уже есть в целевой ветке, они будут пропущены: ${alreadyThere}`)
+  if (alreadyThere) warnings.push(t('Изменения из коммитов уже есть в целевой ветке, они будут пропущены: {alreadyThere}', { alreadyThere }))
   const lost = [...new Set(signaturesLost)]
-  if (lost.length) warnings.push(`Подпись снимется с коммитов: ${lost.length}`)
-  if (unsignable) warnings.push(`Не удалось подписать заново коммитов необычного формата: ${unsignable}`)
+  if (lost.length) warnings.push(t('Подпись снимется с коммитов: {lostCount}', { lostCount: lost.length }))
+  if (unsignable) warnings.push(t('Не удалось подписать заново коммитов необычного формата: {unsignable}', { unsignable }))
 
   const mappingRecord: Record<string, string | null> = {}
   let rewrittenCount = 0
@@ -872,16 +873,16 @@ export async function previewRewrite(
     blockers,
     signaturesLost: lost,
     worktreeChanges,
-    description: plan.description ?? 'Правка истории'
+    description: plan.description ?? t('Правка истории')
   }
 }
 
 /** The commits a branch would carry onto `onto`, from where the two histories split. */
 export async function rebaseRange(cwd: string, branch: string, onto: string): Promise<RebaseRange> {
   const tip = await revParse(cwd, `refs/heads/${branch}`)
-  if (!tip) throw new Error(`Ветка ${branch} не найдена`)
+  if (!tip) throw new Error(t('Ветка {branch} не найдена', { branch }))
   const ontoSha = await revParse(cwd, onto)
-  if (!ontoSha) throw new Error(`Не найдено: ${onto}`)
+  if (!ontoSha) throw new Error(t('Не найдено: {onto}', { onto }))
   const { stdout, code } = await runGit(cwd, ['merge-base', tip, ontoSha], { okCodes: [1] })
   const base = code === 0 ? stdout.toString('utf8').trim() : null
   const range = base ? [`${base}..${tip}`] : [tip]
@@ -994,7 +995,7 @@ export async function moveRefs(
     const to = await gitLine(cwd, ['rev-parse', `${commitOfRef(headMove.after)}^{tree}`])
     if (from !== to) {
       if (status.files.some((file) => file.unstaged !== 'untracked')) {
-        throw new Error('В рабочей папке есть незакоммиченные правки. Сохрани их в stash или закоммить.')
+        throw new Error(t('В рабочей папке есть незакоммиченные правки. Сохрани их в stash или закоммить.'))
       }
       treesMoved = { from, to }
     }
@@ -1039,11 +1040,11 @@ function startingPoint(updates: RefUpdate[]): string {
 export async function applyRewrite(cwd: string, plan: RewritePlan, seen?: RefUpdate[]): Promise<{ entry: JournalEntry; preview: RewritePreview }> {
   const preview = await previewRewrite(cwd, plan, { sign: plan.resign })
   if (seen && startingPoint(seen) !== startingPoint(preview.refUpdates)) {
-    throw new Error('Ветки изменились после предпросмотра, поэтому ничего не применено. Проверь новый результат.')
+    throw new Error(t('Ветки изменились после предпросмотра, поэтому ничего не применено. Проверь новый результат.'))
   }
-  if (preview.conflicts.length) throw new Error(`Конфликт в коммите ${preview.conflicts[0].sha.slice(0, 8)}: ${preview.conflicts[0].subject}`)
+  if (preview.conflicts.length) throw new Error(t('Конфликт в коммите {value}: {value2}', { value: preview.conflicts[0].sha.slice(0, 8), value2: preview.conflicts[0].subject }))
   if (preview.blockers.length) throw new Error(preview.blockers[0])
-  if (!preview.refUpdates.length) throw new Error('План ничего не меняет')
+  if (!preview.refUpdates.length) throw new Error(t('План ничего не меняет'))
   const entry = await moveRefs(
     cwd,
     preview.refUpdates.map((update) => ({ ref: update.ref, before: update.before, after: update.after })),
@@ -1055,19 +1056,22 @@ export async function applyRewrite(cwd: string, plan: RewritePlan, seen?: RefUpd
 async function revertMoves(cwd: string, id: string, direction: 'undo' | 'redo'): Promise<JournalEntry> {
   const journal = await readJournal(cwd)
   const entry = journal.find((item) => item.id === id)
-  if (!entry) throw new Error('Запись журнала не найдена')
+  if (!entry) throw new Error(t('Запись журнала не найдена'))
   const expected = direction === 'undo' ? 'applied' : 'undone'
-  if (entry.state !== expected) throw new Error('Эта запись уже в нужном состоянии')
+  if (entry.state !== expected) throw new Error(t('Эта запись уже в нужном состоянии'))
   const moves: RefMove[] = entry.updates.map((update) => ({
     ref: update.ref,
     before: direction === 'undo' ? update.after : update.before,
     after: direction === 'undo' ? update.before : update.after
   }))
   try {
-    await moveRefs(cwd, moves, `${direction === 'undo' ? 'Отмена' : 'Повтор'}: ${entry.description}`, { record: false })
+    const description = direction === 'undo'
+      ? t('Отмена правки: {description}', { description: entry.description })
+      : t('Повтор правки: {description}', { description: entry.description })
+    await moveRefs(cwd, moves, description, { record: false })
   } catch (error) {
     if (error instanceof GitError) {
-      throw new Error('Ветки изменились после этой операции. Отмена потеряла бы новые коммиты, поэтому она не выполнена.')
+      throw new Error(t('Ветки изменились после этой операции. Отмена потеряла бы новые коммиты, поэтому она не выполнена.'))
     }
     throw error
   }

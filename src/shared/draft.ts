@@ -1,4 +1,5 @@
 import type { Commit, CommitEdit, CommitSplit, RewritePlan, TodoAction, TodoItem } from './types'
+import { t } from './i18n'
 
 export interface DraftSequence {
   branch: string
@@ -204,7 +205,7 @@ export function buildPlan(commits: Commit[], draft: Draft): RewritePlan {
   }
   const plan: RewritePlan = { edits }
   const parts: string[] = []
-  if (Object.keys(edits).length) parts.push(`правка коммитов: ${Object.keys(edits).length}`)
+  if (Object.keys(edits).length) parts.push(t('правка коммитов: {value}', { value: Object.keys(edits).length }))
   const sequence = draft.sequence
   if (sequence && isSequenceChanged(commits, sequence)) {
     const original = originalOrder(commits, sequence)
@@ -218,8 +219,8 @@ export function buildPlan(commits: Commit[], draft: Draft): RewritePlan {
       start++
     }
     plan.sequence = { base, tip: sequence.tip, todo: sequence.todo.slice(start) }
-    parts.push(`перестройка ветки ${sequence.branch}`)
+    parts.push(t('перестройка ветки {branch}', { branch: sequence.branch }))
   }
-  plan.description = parts.join(', ') || 'Правка истории'
+  plan.description = parts.join(', ') || t('Правка истории')
   return plan
 }

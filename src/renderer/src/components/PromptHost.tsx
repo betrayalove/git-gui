@@ -3,6 +3,7 @@ import type { AccessPrompt, PromptReply } from '../../../shared/access'
 import { kindForHost } from '../../../shared/remote-url'
 import { appApi } from '../api'
 import { Icon, Modal } from './ui'
+import { t } from '../../../shared/i18n'
 
 const FINGERPRINT_DOCS: Record<string, string> = {
   github: 'https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints',
@@ -18,8 +19,8 @@ function TextPrompt({ prompt, onReply }: { prompt: AccessPrompt; onReply: (reply
   const [remember, setRemember] = useState(false)
   const isKey = prompt.kind === 'passphrase'
   const isLogin = prompt.kind === 'username' || prompt.kind === 'password'
-  const title = isKey ? 'Пароль SSH-ключа' : isLogin ? 'Вход на сервер' : 'Вопрос от git'
-  const label = isKey ? 'Пароль ключа' : prompt.kind === 'username' ? 'Имя пользователя' : prompt.kind === 'password' ? 'Пароль или токен' : 'Ответ'
+  const title = isKey ? t('Пароль SSH-ключа') : isLogin ? t('Вход на сервер') : t('Вопрос от git')
+  const label = isKey ? t('Пароль ключа') : prompt.kind === 'username' ? t('Имя пользователя') : prompt.kind === 'password' ? t('Пароль или токен') : t('Ответ')
   const submit = (): void => {
     if (value) onReply({ answer: value, remember })
   }
@@ -29,13 +30,13 @@ function TextPrompt({ prompt, onReply }: { prompt: AccessPrompt; onReply: (reply
       topmost
       onClose={() => onReply(null)}
       footer={<>
-        <button className="btn btn-ghost" onClick={() => onReply(null)}>Отмена</button>
-        <button className="btn btn-primary" disabled={!value} onClick={submit}>Продолжить</button>
+        <button className="btn btn-ghost" onClick={() => onReply(null)}>{t('Отмена')}</button>
+        <button className="btn btn-primary" disabled={!value} onClick={submit}>{t('Продолжить')}</button>
       </>}
     >
-      {prompt.retry && <div className="banner danger"><Icon name="warning" />Пароль не подошёл. Попробуй ещё раз.</div>}
+      {prompt.retry && <div className="banner danger"><Icon name="warning" />{t('Пароль не подошёл. Попробуй ещё раз.')}</div>}
       {isKey
-        ? <p className="prose">Ключ {prompt.keyPath ? <b>{fileName(prompt.keyPath)}</b> : null} защищён паролем. Это пароль самого ключа, а не аккаунта на сайте.</p>
+        ? <p className="prose">{t('Ключ')} {prompt.keyPath ? <b>{fileName(prompt.keyPath)}</b> : null} {t('защищён паролем. Это пароль самого ключа, а не аккаунта на сайте.')}</p>
         : <p className="prose prompt-text">{prompt.text}</p>}
       <label className="field">
         <span>{label}</span>
@@ -52,11 +53,11 @@ function TextPrompt({ prompt, onReply }: { prompt: AccessPrompt; onReply: (reply
       {prompt.canRemember && (
         <label className="check">
           <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-          <span>Запомнить на этом компьютере. Пароль будет зашифрован средствами системы, и отложенные публикации смогут выходить без тебя.</span>
+          <span>{t('Запомнить на этом компьютере. Пароль будет зашифрован средствами системы, и отложенные публикации смогут выходить без тебя.')}</span>
         </label>
       )}
-      {isKey && !remember && <p className="hint">Пока приложение открыто, пароль хранится в памяти 15 минут, поэтому одна отправка не спросит его несколько раз.</p>}
-      {isLogin && <p className="hint">GitHub и GitLab принимают здесь не пароль от сайта, а токен. Проще подключить SSH-ключ: нажми «Отмена», и приложение предложит это.</p>}
+      {isKey && !remember && <p className="hint">{t('Пока приложение открыто, пароль хранится в памяти 15 минут, поэтому одна отправка не спросит его несколько раз.')}</p>}
+      {isLogin && <p className="hint">{t('GitHub и GitLab принимают здесь не пароль от сайта, а токен. Проще подключить SSH-ключ: нажми «Отмена», и приложение предложит это.')}</p>}
     </Modal>
   )
 }
@@ -65,19 +66,19 @@ function HostKeyPrompt({ prompt, onReply }: { prompt: AccessPrompt; onReply: (re
   const kind = prompt.host ? kindForHost(prompt.host) : null
   return (
     <Modal
-      title="Первое подключение к серверу"
+      title={t('Первое подключение к серверу')}
       topmost
       onClose={() => onReply(null)}
       footer={<>
-        <button className="btn btn-ghost" onClick={() => onReply(null)}>Отмена</button>
-        <button className="btn btn-primary" autoFocus onClick={() => onReply({ answer: 'yes' })}>Доверять и подключиться</button>
+        <button className="btn btn-ghost" onClick={() => onReply(null)}>{t('Отмена')}</button>
+        <button className="btn btn-primary" autoFocus onClick={() => onReply({ answer: 'yes' })}>{t('Доверять и подключиться')}</button>
       </>}
     >
-      <p className="prose">Этот компьютер ещё не подключался к <b>{prompt.host ?? 'этому серверу'}</b>. Проверь отпечаток: так можно убедиться, что это настоящий сервер. После подтверждения он запомнится.</p>
+      <p className="prose">{t('Этот компьютер ещё не подключался к')} <b>{prompt.host ?? t('этому серверу')}</b>{t('. Проверь отпечаток: так можно убедиться, что это настоящий сервер. После подтверждения он запомнится.')}</p>
       {prompt.fingerprint && <div className="key-box"><code>{prompt.fingerprint}</code></div>}
       {kind && (
         <button className="link" onClick={() => void appApi.openExternal(FINGERPRINT_DOCS[kind])}>
-          Официальные отпечатки {kind === 'github' ? 'GitHub' : 'GitLab'}
+          {t('Официальные отпечатки')} {kind === 'github' ? 'GitHub' : 'GitLab'}
         </button>
       )}
     </Modal>
@@ -87,12 +88,12 @@ function HostKeyPrompt({ prompt, onReply }: { prompt: AccessPrompt; onReply: (re
 function ConfirmPrompt({ prompt, onReply }: { prompt: AccessPrompt; onReply: (reply: PromptReply | null) => void }): ReactNode {
   return (
     <Modal
-      title="Вопрос от ssh"
+      title={t('Вопрос от ssh')}
       topmost
       onClose={() => onReply(null)}
       footer={<>
-        <button className="btn btn-ghost" onClick={() => onReply(null)}>Нет</button>
-        <button className="btn btn-primary" onClick={() => onReply({ answer: 'yes' })}>Да</button>
+        <button className="btn btn-ghost" onClick={() => onReply(null)}>{t('Нет')}</button>
+        <button className="btn btn-primary" onClick={() => onReply({ answer: 'yes' })}>{t('Да')}</button>
       </>}
     >
       <p className="prose prompt-text">{prompt.text}</p>

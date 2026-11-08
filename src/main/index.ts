@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, Tray } from 'electron'
 import { AskpassServer } from '../core/askpass'
 import { checkGitVersion, configureGit, withoutPrompts } from '../core/git'
 import { PromptBroker } from '../core/prompt-broker'
@@ -15,12 +16,28 @@ import { listSchedules, publishDue, waitingNotice } from '../core/schedule'
 import { checkForUpdate } from '../core/updates'
 import { api, type AppApi, type ApiMethod } from './api'
 import { PassphraseStore } from './passphrases'
+import { isLanguage, language, languageForLocale, setLanguage, t, type Language } from '../shared/i18n'
+import { isTheme, type Theme } from '../shared/types'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 // The portable Windows build unpacks to a temporary folder and names its real location here.
 const portableDir = process.env.PORTABLE_EXECUTABLE_DIR
 if (portableDir) app.setPath('userData', join(portableDir, 'Chronicle Data'))
 const statePath = (): string => join(app.getPath('userData'), 'state.json')
+
+/**
+ * Date fields and the system's own menus follow Chromium's locale, which can only be set before
+ * the app is ready. So the chosen language is read here once, ahead of the rest of the settings.
+ */
+function applyChosenLocale(): void {
+  try {
+    const saved = (JSON.parse(readFileSync(statePath(), 'utf8')) as { language?: unknown }).language
+    if (isLanguage(saved)) app.commandLine.appendSwitch('lang', saved === 'en' ? 'en-US' : 'ru')
+  } catch {
+    // No settings yet: the system locale stays.
+  }
+}
+applyChosenLocale()
 const TICK_MS = 30_000
 const RECENT_LIMIT = 20
 
@@ -32,6 +49,9 @@ let recent: string[] = []
 const HIDDEN_FLAG = '--chronicle-hidden'
 let startedHidden = false
 let updateChecks = true
+/** Null until the person picks one: until then the language follows the system. */
+let chosenLanguage: Language | null = null
+let theme: Theme = 'system'
 const PROMPT_TIMEOUT_MS = 5 * 60_000
 const warnedWaiting = new Set<string>()
 const openPrompts = new Map<string, (reply: PromptReply | null) => void>()
@@ -41,24 +61,30 @@ let broker: PromptBroker
 
 async function loadState(): Promise<void> {
   try {
-    const state = JSON.parse(await readFile(statePath(), 'utf8')) as { recent?: string[]; known?: string[]; updateChecks?: boolean }
+    const state = JSON.parse(await readFile(statePath(), 'utf8')) as {
+      recent?: string[]; known?: string[]; updateChecks?: boolean; language?: unknown; theme?: unknown
+    }
     recent = state.recent ?? []
     updateChecks = state.updateChecks ?? true
+    chosenLanguage = isLanguage(state.language) ? state.language : null
+    theme = isTheme(state.theme) ? state.theme : 'system'
     for (const repo of state.known ?? []) openRepos.add(repo)
   } catch {
     recent = []
   }
   for (const repo of recent) openRepos.add(repo)
+  setLanguage(chosenLanguage ?? languageForLocale(app.getLocale()))
+  nativeTheme.themeSource = theme
 }
 
 async function saveState(): Promise<void> {
   await mkdir(app.getPath('userData'), { recursive: true })
   // `known` outlives the recent list, so a pending publish still runs after its repository scrolls off.
-  await writeFile(statePath(), JSON.stringify({ recent, known: [...openRepos], updateChecks }, null, 2))
+  await writeFile(statePath(), JSON.stringify({ recent, known: [...openRepos], updateChecks, language: chosenLanguage ?? undefined, theme }, null, 2))
 }
 
 async function rememberRepo(path: string): Promise<string> {
-  if (!(await isRepository(path))) throw new Error(`Это не git-репозиторий: ${path}`)
+  if (!(await isRepository(path))) throw new Error(t('Это не git-репозиторий: {path}', { path }))
   const root = await repoRoot(path)
   openRepos.add(root)
   recent = [root, ...recent.filter((item) => item !== root)].slice(0, RECENT_LIMIT)
@@ -144,12 +170,12 @@ async function syncTray(): Promise<void> {
     tray = new Tray(trayIcon())
     tray.on('click', showWindow)
   }
-  tray.setToolTip(pending ? `Chronicle: запланировано публикаций: ${pending}` : 'Chronicle')
+  tray.setToolTip(pending ? t('Chronicle: запланировано публикаций: {pending}', { pending }) : 'Chronicle')
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: `Запланировано публикаций: ${pending}`, enabled: false },
-    { label: 'Открыть Chronicle', click: showWindow },
+    { label: t('Запланировано публикаций: {pending}', { pending }), enabled: false },
+    { label: t('Открыть Chronicle'), click: showWindow },
     { type: 'separator' },
-    { label: 'Выйти', click: () => { quitting = true; app.quit() } }
+    { label: t('Выйти'), click: () => { quitting = true; app.quit() } }
   ]))
 }
 
@@ -174,8 +200,8 @@ async function tick(): Promise<void> {
       if (Notification.isSupported()) {
         const issue = result.error ? classifyAccessError(result.error) : null
         new Notification({
-          title: result.state === 'done' ? `Опубликовано: ${result.branch}` : `Не удалось опубликовать: ${result.branch}`,
-          body: (issue && issueSummary(issue)) ?? result.error ?? result.note ?? `Коммитов: ${result.commits.length}`
+          title: result.state === 'done' ? t('Опубликовано: {branch}', { branch: result.branch }) : t('Не удалось опубликовать: {branch}', { branch: result.branch }),
+          body: (issue && issueSummary(issue)) ?? result.error ?? result.note ?? t('Коммитов: {commitsCount}', { commitsCount: result.commits.length })
         }).show()
       }
     }
@@ -200,7 +226,7 @@ function createWindow(): void {
     minWidth: 1040,
     minHeight: 640,
     show: false,
-    backgroundColor: '#101114',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0e0f12' : '#eff0f3',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     trafficLightPosition: { x: 16, y: 16 },
     ...(process.platform === 'darwin' ? {} : { titleBarOverlay: { color: '#00000000', symbolColor: '#9a9ca5', height: 44 } }),
@@ -226,14 +252,14 @@ function createWindow(): void {
 const appHandlers: AppApi = {
   recentRepos: async () => recent,
   pickRepository: async () => {
-    const result = await dialog.showOpenDialog(window!, { properties: ['openDirectory'], title: 'Открыть репозиторий' })
+    const result = await dialog.showOpenDialog(window!, { properties: ['openDirectory'], title: t('Открыть репозиторий') })
     return result.canceled ? null : rememberRepo(result.filePaths[0])
   },
   openRepository: rememberRepo,
   forgetRepository: async (path) => {
     const schedules = await listSchedules(path).catch(() => [])
     if (schedules.some((item) => item.state === 'pending')) {
-      throw new Error('В этом репозитории есть запланированные публикации. Сначала отмени их.')
+      throw new Error(t('В этом репозитории есть запланированные публикации. Сначала отмени их.'))
     }
     recent = recent.filter((item) => item !== path)
     openRepos.delete(path)
@@ -251,7 +277,7 @@ const appHandlers: AppApi = {
   copyText: async (text) => clipboard.writeText(text),
   revealPath: async (path) => shell.showItemInFolder(path),
   openExternal: async (url) => {
-    if (!url.startsWith('https://')) throw new Error(`Адрес не открыт: ${url}`)
+    if (!url.startsWith('https://')) throw new Error(t('Адрес не открыт: {url}', { url }))
     await shell.openExternal(url)
   },
   sshListKeys: (host) => listKeys(host),
@@ -264,7 +290,7 @@ const appHandlers: AppApi = {
     return path
   },
   sshCheckRemote: async (repo, url, keyPath) => {
-    if (repo !== null && !openRepos.has(repo)) throw new Error('Репозиторий не открыт')
+    if (repo !== null && !openRepos.has(repo)) throw new Error(t('Репозиторий не открыт'))
     return checkRemote(repo, url, keyPath)
   },
   answerPrompt: async (id, reply) => openPrompts.get(id)?.(reply),
@@ -283,8 +309,25 @@ const appHandlers: AppApi = {
     available: app.isPackaged && !portableDir,
     enabled: app.isPackaged && !portableDir && app.getLoginItemSettings().openAtLogin
   }),
+  preferences: async () => ({ language: language(), theme }),
+  setLanguage: async (next) => {
+    if (!isLanguage(next)) throw new Error(t('Неизвестный язык: {next}', { next: String(next) }))
+    chosenLanguage = next
+    setLanguage(next)
+    await saveState()
+    await syncTray()
+    // Every text, including those kept in constants, has to be drawn again. The page itself may not
+    // navigate, so the reload comes from here, once this call has answered.
+    setImmediate(() => window?.webContents.reload())
+  },
+  setTheme: async (next) => {
+    if (!isTheme(next)) throw new Error(t('Неизвестная тема: {next}', { next: String(next) }))
+    theme = next
+    nativeTheme.themeSource = next
+    await saveState()
+  },
   setAutostart: async (enabled) => {
-    if (!app.isPackaged || portableDir) throw new Error('Автозапуск доступен только в установленном приложении')
+    if (!app.isPackaged || portableDir) throw new Error(t('Автозапуск доступен только в установленном приложении'))
     app.setLoginItemSettings({ openAtLogin: enabled, args: enabled ? [HIDDEN_FLAG] : [] })
   }
 }
@@ -294,11 +337,13 @@ function errorText(error: unknown): string {
 }
 
 function registerIpc(): void {
+  // The window asks before its scripts run, so every text is in the right language from the start.
+  ipcMain.on('chronicle:language', (event) => { event.returnValue = language() })
   ipcMain.handle('chronicle:repo', async (_event, method: ApiMethod, args: unknown[]) => {
     try {
-      if (!Object.hasOwn(api, method)) throw new Error(`Неизвестный метод: ${method}`)
+      if (!Object.hasOwn(api, method)) throw new Error(t('Неизвестный метод: {method}', { method }))
       const repo = args[0]
-      if (typeof repo !== 'string' || !openRepos.has(repo)) throw new Error('Репозиторий не открыт')
+      if (typeof repo !== 'string' || !openRepos.has(repo)) throw new Error(t('Репозиторий не открыт'))
       const handler = api[method] as (...values: unknown[]) => Promise<unknown>
       const value = await handler(...args)
       if (method === 'schedulePublish' || method === 'cancelSchedule') void syncTray()
@@ -309,7 +354,7 @@ function registerIpc(): void {
   })
   ipcMain.handle('chronicle:app', async (_event, method: keyof AppApi, args: unknown[]) => {
     try {
-      if (!Object.hasOwn(appHandlers, method)) throw new Error(`Неизвестный метод: ${method}`)
+      if (!Object.hasOwn(appHandlers, method)) throw new Error(t('Неизвестный метод: {method}', { method }))
       const handler = appHandlers[method] as (...values: unknown[]) => Promise<unknown>
       return { ok: true, value: await handler(...args) }
     } catch (error) {
@@ -331,7 +376,7 @@ void app.whenReady().then(async () => {
   try {
     await checkGitVersion()
   } catch (error) {
-    dialog.showErrorBox('Git не подходит', errorText(error))
+    dialog.showErrorBox(t('Git не подходит'), errorText(error))
   }
   if (!startedHidden) createWindow()
   await tick()

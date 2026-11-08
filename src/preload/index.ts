@@ -10,6 +10,7 @@ async function invoke(channel: string, method: string, args: unknown[]): Promise
 
 contextBridge.exposeInMainWorld('chronicle', {
   platform: process.platform,
+  language: ipcRenderer.sendSync('chronicle:language') as string,
   call: (method: string, ...args: unknown[]) => invoke('chronicle:repo', method, args),
   app: (method: string, ...args: unknown[]) => invoke('chronicle:app', method, args),
   onChanged: (listener: (repo: string) => void) => {

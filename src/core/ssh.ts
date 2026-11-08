@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path'
 import { classifyAccessError, type AccessIssue, type SshTarget } from '../shared/access'
 import type { AskpassServer } from './askpass'
 import { childEnv, gitLine, GitError, runGit } from './git'
+import { t } from '../shared/i18n'
 
 export interface SshKey {
   /** The fingerprint, or the path while the public part is unknown. */
@@ -188,7 +189,7 @@ export async function listKeys(host = 'github.com'): Promise<SshKey[]> {
     const fingerprint = fingerprintOf(line.blob)
     keys.push({
       id: fingerprint,
-      name: line.comment || 'Ключ из SSH-агента',
+      name: line.comment || t('Ключ из SSH-агента'),
       path: null,
       publicKey: `${line.type} ${line.blob}${line.comment ? ` ${line.comment}` : ''}`,
       type: shortType(line.type),
@@ -213,8 +214,8 @@ export async function listKeys(host = 'github.com'): Promise<SshKey[]> {
 
 function assertTarget(target: SshTarget): void {
   // A remote's address comes from outside, and a value starting with a dash would be read as an option.
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:[\]-]*$/.test(target.host)) throw new Error(`Некорректный адрес сервера: ${target.host}`)
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(target.user)) throw new Error(`Некорректное имя пользователя: ${target.user}`)
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:[\]-]*$/.test(target.host)) throw new Error(t('Некорректный адрес сервера: {host}', { host: target.host }))
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(target.user)) throw new Error(t('Некорректное имя пользователя: {user}', { user: target.user }))
 }
 
 function targetArgs(target: SshTarget): string[] {
@@ -277,7 +278,7 @@ async function publicFileFor(key: SshKey, dir: string): Promise<string> {
 
 async function identityPath(key: SshKey): Promise<string> {
   if (key.path) return key.path
-  if (!key.publicKey || !key.fingerprint) throw new Error('У этого ключа нет ни файла, ни публичной части')
+  if (!key.publicKey || !key.fingerprint) throw new Error(t('У этого ключа нет ни файла, ни публичной части'))
   return publicFileFor(key, sshDir())
 }
 
@@ -301,11 +302,11 @@ export async function checkKey(key: SshKey, target: SshTarget, interactive = fal
 
 /** Recovers a missing `.pub` file. A protected key asks for its password. */
 export async function derivePublicKey(path: string): Promise<void> {
-  if (!existsSync(path)) throw new Error(`Нет такого ключа: ${path}`)
+  if (!existsSync(path)) throw new Error(t('Нет такого ключа: {path}', { path }))
   const { keygen } = await findTools()
   const result = await runTool(keygen, ['-y', '-f', path], { timeoutMs: 5 * 60_000 })
   const line = parsePublicLine(result.stdout)
-  if (result.code !== 0 || !line) throw new Error(`Не удалось прочитать ключ. ${result.stderr.trim()}`.trim())
+  if (result.code !== 0 || !line) throw new Error(t('Не удалось прочитать ключ. {value}', { value: result.stderr.trim() }).trim())
   const target = `${path}.pub`
   if (!existsSync(target)) await writeFile(target, `${result.stdout.trim()}\n`)
 }
@@ -337,7 +338,7 @@ const MIN_PASSPHRASE = 5
 
 /** Creates a key under a name nothing else uses, so an existing key can never be overwritten. */
 export async function createKey(passphrase: string, askpass: AskpassServer | null): Promise<string> {
-  if (passphrase && passphrase.length < MIN_PASSPHRASE) throw new Error(`Пароль ключа должен быть не короче ${MIN_PASSPHRASE} символов`)
+  if (passphrase && passphrase.length < MIN_PASSPHRASE) throw new Error(t('Пароль ключа должен быть не короче {MIN_PASSPHRASE} символов', { MIN_PASSPHRASE }))
   const path = freeKeyPath()
   await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   const { keygen } = await findTools()
@@ -345,7 +346,7 @@ export async function createKey(passphrase: string, askpass: AskpassServer | nul
   const base = ['-q', '-t', 'ed25519', '-f', path, '-C', comment]
   let result: ToolResult
   if (passphrase) {
-    if (!askpass) throw new Error('Пароль ключа передать не удалось')
+    if (!askpass) throw new Error(t('Пароль ключа передать не удалось'))
     const secret = askpass.oneShot(passphrase)
     try {
       result = await runTool(keygen, base, { env: secret.env, timeoutMs: CHECK_TIMEOUT_MS })
@@ -355,8 +356,8 @@ export async function createKey(passphrase: string, askpass: AskpassServer | nul
   } else {
     result = await runTool(keygen, [...base, '-N', ''], { timeoutMs: CHECK_TIMEOUT_MS })
   }
-  if (result.missing) throw new Error('На компьютере не найден ssh-keygen. Установи Git или OpenSSH и повтори.')
-  if (result.code !== 0 || !existsSync(`${path}.pub`)) throw new Error(`Не удалось создать ключ. ${result.stderr.trim()}`.trim())
+  if (result.missing) throw new Error(t('На компьютере не найден ssh-keygen. Установи Git или OpenSSH и повтори.'))
+  if (result.code !== 0 || !existsSync(`${path}.pub`)) throw new Error(t('Не удалось создать ключ. {value}', { value: result.stderr.trim() }).trim())
   return path
 }
 

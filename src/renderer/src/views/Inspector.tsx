@@ -5,6 +5,7 @@ import { DiffView } from '../components/DiffView'
 import { Avatar, EmptyState, Icon } from '../components/ui'
 import { formatFull, isoToLocalInput, offsetOf, plural, shiftIso, shortSha } from '../format'
 import { useRepo } from '../store'
+import { t } from '../../../shared/i18n'
 
 function splitMessage(message: string): { subject: string; body: string } {
   const [subject, ...rest] = message.split('\n')
@@ -53,14 +54,14 @@ function BulkEditor({ shas }: { shas: string[] }): ReactNode {
   return (
     <div className="inspector-form">
       <h3>{plural(shas.length, 'коммит выбран', 'коммита выбрано', 'коммитов выбрано')}</h3>
-      <label className="field"><span>Новый автор</span><input value={name} placeholder="Имя" onChange={(event) => setName(event.target.value)} /></label>
-      <label className="field"><span>Email автора</span><input value={email} placeholder="email@example.com" onChange={(event) => setEmail(event.target.value)} /></label>
+      <label className="field"><span>{t('Новый автор')}</span><input value={name} placeholder={t('Имя')} onChange={(event) => setName(event.target.value)} /></label>
+      <label className="field"><span>{t('Email автора')}</span><input value={email} placeholder="email@example.com" onChange={(event) => setEmail(event.target.value)} /></label>
       <label className="check">
         <input type="checkbox" checked={committerToo} onChange={(event) => setCommitterToo(event.target.checked)} />
-        <span>Заменить и коммиттера</span>
+        <span>{t('Заменить и коммиттера')}</span>
       </label>
-      <label className="field"><span>Сдвинуть даты, часов</span><input type="number" step="1" value={hours} placeholder="например, −24" onChange={(event) => setHours(event.target.value)} /></label>
-      <button className="btn btn-primary" disabled={!valid} onClick={apply}>Добавить в черновик</button>
+      <label className="field"><span>{t('Сдвинуть даты, часов')}</span><input type="number" step="1" value={hours} placeholder={t('например, −24')} onChange={(event) => setHours(event.target.value)} /></label>
+      <button className="btn btn-primary" disabled={!valid} onClick={apply}>{t('Добавить в черновик')}</button>
     </div>
   )
 }
@@ -85,7 +86,7 @@ export function Inspector(): ReactNode {
 
   if (selected.length > 1) return <aside className="inspector"><BulkEditor shas={selected} /></aside>
   if (!original || !shown) {
-    return <aside className="inspector"><EmptyState icon="history" title="Выбери коммит">Здесь можно изменить его сообщение, автора и даты. Выбери несколько с Cmd или Shift, чтобы править их вместе.</EmptyState></aside>
+    return <aside className="inspector"><EmptyState icon="history" title={t('Выбери коммит')}>{t('Здесь можно изменить его сообщение, автора и даты. Выбери несколько с Cmd или Shift, чтобы править их вместе.')}</EmptyState></aside>
   }
 
   const update = (field: keyof CommitEdit, value: string): void => {
@@ -131,20 +132,20 @@ export function Inspector(): ReactNode {
             <div className="muted">{formatFull(shown.authorDate)}</div>
           </div>
           {draft.edits[original.sha] && Object.keys(draft.edits[original.sha]).length > 0 && (
-            <button className="btn btn-ghost btn-small" onClick={reset}><Icon name="undo" size={13} />Сбросить</button>
+            <button className="btn btn-ghost btn-small" onClick={reset}><Icon name="undo" size={13} />{t('Сбросить')}</button>
           )}
         </div>
         <label className={`field ${edit.message !== undefined ? 'edited' : ''}`}>
-          <span>Заголовок</span>
+          <span>{t('Заголовок')}</span>
           <input value={subject} onChange={(event) => update('message', joinMessage(event.target.value, body))} />
         </label>
         <label className={`field ${edit.message !== undefined ? 'edited' : ''}`}>
-          <span>Описание</span>
-          <textarea rows={4} value={body} placeholder="Подробности изменения" onChange={(event) => update('message', joinMessage(subject, event.target.value))} />
+          <span>{t('Описание')}</span>
+          <textarea rows={4} value={body} placeholder={t('Подробности изменения')} onChange={(event) => update('message', joinMessage(subject, event.target.value))} />
         </label>
         <div className="field-row">
           <label className={`field ${edit.authorName !== undefined ? 'edited' : ''}`}>
-            <span>Автор</span>
+            <span>{t('Автор')}</span>
             <input value={shown.authorName} onChange={(event) => update('authorName', event.target.value)} />
           </label>
           <label className={`field ${edit.authorEmail !== undefined ? 'edited' : ''}`}>
@@ -153,18 +154,18 @@ export function Inspector(): ReactNode {
           </label>
         </div>
         <label className={`field ${edit.authorDate !== undefined ? 'edited' : ''}`}>
-          <span>Дата автора ({offsetOf(original.authorDate)})</span>
+          <span>{t('Дата автора (')}{offsetOf(original.authorDate)})</span>
           {dateInput('authorDate')}
         </label>
         <button className="disclosure" onClick={() => setShowCommitter(!showCommitter)} aria-expanded={showCommitter}>
           <Icon name="chevron" size={12} style={{ transform: showCommitter ? 'rotate(90deg)' : undefined }} />
-          Коммиттер
+          {t('Коммиттер')}
         </button>
         {showCommitter && (
           <>
             <div className="field-row">
               <label className={`field ${edit.committerName !== undefined ? 'edited' : ''}`}>
-                <span>Имя</span>
+                <span>{t('Имя')}</span>
                 <input value={shown.committerName} onChange={(event) => update('committerName', event.target.value)} />
               </label>
               <label className={`field ${edit.committerEmail !== undefined ? 'edited' : ''}`}>
@@ -173,7 +174,7 @@ export function Inspector(): ReactNode {
               </label>
             </div>
             <label className={`field ${edit.committerDate !== undefined ? 'edited' : ''}`}>
-              <span>Дата коммита ({offsetOf(original.committerDate)})</span>
+              <span>{t('Дата коммита (')}{offsetOf(original.committerDate)})</span>
               {dateInput('committerDate')}
             </label>
           </>
@@ -182,7 +183,7 @@ export function Inspector(): ReactNode {
       <div className="inspector-diff"><DiffView
         diff={diff}
         highlight={searchMode === 'content' ? search.trim() : undefined}
-        actions={{ file: (file) => file.status === 'deleted' ? null : <button className="btn btn-small btn-ghost" title="Все изменения этого файла и кто менял строки" onClick={() => openFile(file.path)}>История файла</button> }}
+        actions={{ file: (file) => file.status === 'deleted' ? null : <button className="btn btn-small btn-ghost" title={t('Все изменения этого файла и кто менял строки')} onClick={() => openFile(file.path)}>{t('История файла')}</button> }}
       /></div>
     </aside>
   )

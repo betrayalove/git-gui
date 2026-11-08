@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { t } from '../shared/i18n'
 
 export class GitError extends Error {
   constructor(
@@ -81,7 +82,7 @@ export function runGit(cwd: string, args: string[], options: RunOptions = {}): P
     child.stderr.on('data', (chunk: Buffer) => err.push(chunk))
     child.on('error', (error) => {
       if (timer) clearTimeout(timer)
-      reject(new GitError(`Не удалось запустить git: ${error.message}`, args, null, ''))
+      reject(new GitError(t('Не удалось запустить git: {message}', { message: error.message }), args, null, ''))
     })
     child.on('close', (code) => {
       if (timer) clearTimeout(timer)
@@ -91,7 +92,7 @@ export function runGit(cwd: string, args: string[], options: RunOptions = {}): P
         resolve({ stdout: Buffer.concat(out), stderr, code: exit })
       } else {
         const detail = stderr.trim() || Buffer.concat(out).toString('utf8').trim()
-        reject(new GitError(detail || `git ${args[0]} завершился с кодом ${exit}`, args, code, stderr))
+        reject(new GitError(detail || t('git {value} завершился с кодом {exit}', { value: args[0], exit }), args, code, stderr))
       }
     })
     child.stdin.on('error', () => {})
@@ -123,10 +124,10 @@ const MIN_GIT_VERSION: [number, number] = [2, 45]
 export async function checkGitVersion(): Promise<string> {
   const text = await gitLine(process.cwd(), ['--version'])
   const match = /(\d+)\.(\d+)/.exec(text)
-  if (!match) throw new Error(`Не удалось определить версию git: ${text}`)
+  if (!match) throw new Error(t('Не удалось определить версию git: {text}', { text }))
   const [major, minor] = [Number(match[1]), Number(match[2])]
   if (major < MIN_GIT_VERSION[0] || (major === MIN_GIT_VERSION[0] && minor < MIN_GIT_VERSION[1])) {
-    throw new Error(`Нужен git ${MIN_GIT_VERSION.join('.')} или новее, установлен ${text}`)
+    throw new Error(t('Нужен git {value} или новее, установлен {text}', { value: MIN_GIT_VERSION.join('.'), text }))
   }
   return text
 }
