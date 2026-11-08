@@ -5,6 +5,15 @@ import { git, gitLine, isAncestor, revParse, runGit } from './git'
 import { readCommits, readRefs, readRemotes } from './read'
 import { sshCommandFor } from './ssh'
 
+/** A ref, SHA or remote name from outside. One that starts with a dash would be read as an option. */
+function assertRevision(value: string, problem = 'Недопустимая ссылка'): void {
+  if (typeof value !== 'string' || !value || value.startsWith('-')) throw new Error(`${problem}: ${value}`)
+}
+
+function assertStashIndex(index: number): void {
+  if (!Number.isInteger(index) || index < 0) throw new Error(`Недопустимый номер записи stash: ${index}`)
+}
+
 async function validateBranchName(cwd: string, name: string): Promise<void> {
   const { code } = await runGit(cwd, ['check-ref-format', '--branch', name], { okCodes: [1, 128] })
   if (code !== 0) throw new Error(`Недопустимое имя ветки: ${name}`)
@@ -62,10 +71,12 @@ export async function commit(cwd: string, options: CommitOptions): Promise<strin
 // Branches
 
 export async function checkout(cwd: string, name: string): Promise<void> {
+  assertRevision(name)
   await git(cwd, ['switch', name])
 }
 
 export async function checkoutCommit(cwd: string, sha: string): Promise<void> {
+  assertRevision(sha)
   await git(cwd, ['switch', '--detach', sha])
 }
 
@@ -77,6 +88,7 @@ export async function checkoutRemoteBranch(cwd: string, remoteBranch: string): P
 
 export async function createBranch(cwd: string, name: string, startPoint: string, switchTo: boolean): Promise<void> {
   await validateBranchName(cwd, name)
+  assertRevision(startPoint)
   if (switchTo) await git(cwd, ['switch', '--create', name, startPoint])
   else await git(cwd, ['branch', '--', name, startPoint])
 }
@@ -89,6 +101,7 @@ const INCOMING_PAGE = 50
 
 /** Predicts a merge into the current branch, including the files that would conflict. */
 export async function mergePreview(cwd: string, ref: string): Promise<MergePreview> {
+  assertRevision(ref)
   const head = await revParse(cwd, 'HEAD')
   if (!head) throw new Error('В текущей ветке ещё нет коммитов')
   const target = await revParse(cwd, ref)
@@ -117,6 +130,7 @@ export async function mergePreview(cwd: string, ref: string): Promise<MergePrevi
  * the error says so; nothing is rolled back.
  */
 export async function mergeBranch(cwd: string, ref: string, mode: MergeMode = 'auto'): Promise<void> {
+  assertRevision(ref)
   const flags = mode === 'no-ff' ? ['--no-ff'] : mode === 'squash' ? ['--squash'] : []
   await git(cwd, ['merge', '--no-edit', ...flags, ref])
 }
@@ -201,15 +215,19 @@ export async function resolveWorktreeConflict(cwd: string, path: string, resolut
 }
 
 export async function cherryPick(cwd: string, sha: string): Promise<void> {
+  assertRevision(sha)
   await git(cwd, ['cherry-pick', sha])
 }
 
 export async function revertCommit(cwd: string, sha: string): Promise<void> {
+  assertRevision(sha)
   await git(cwd, ['revert', '--no-edit', sha])
 }
 
 export async function resetTo(cwd: string, sha: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
-  await git(cwd, ['reset', `--${mode}`, sha])
+  assertRevision(sha)
+  if (!['soft', 'mixed', 'hard'].includes(mode)) throw new Error(`Неизвестный режим сброса: ${mode}`)
+  await git(cwd, ['reset', `--${mode}`, sha, '--'])
 }
 
 // Tags
@@ -222,7 +240,11 @@ export async function createTag(cwd: string, name: string, sha: string, message?
 }
 
 export async function deleteTag(cwd: string, name: string, remote?: string): Promise<void> {
-  if (remote) await git(cwd, ['push', remote, `:refs/tags/${name}`])
+  assertRevision(name, 'Недопустимое имя тега')
+  if (remote !== undefined) {
+    assertRevision(remote, 'Недопустимое имя remote')
+    await git(cwd, ['push', '--', remote, `:refs/tags/${name}`])
+  }
   await git(cwd, ['tag', '--delete', name])
 }
 
@@ -236,10 +258,12 @@ export async function stashPush(cwd: string, message: string, includeUntracked: 
 }
 
 export async function stashApply(cwd: string, index: number, pop: boolean): Promise<void> {
+  assertStashIndex(index)
   await git(cwd, ['stash', pop ? 'pop' : 'apply', `stash@{${index}}`])
 }
 
 export async function stashDrop(cwd: string, index: number): Promise<void> {
+  assertStashIndex(index)
   await git(cwd, ['stash', 'drop', `stash@{${index}}`])
 }
 
@@ -249,6 +273,7 @@ export async function stashClear(cwd: string): Promise<void> {
 
 export async function stashToBranch(cwd: string, name: string, index: number): Promise<void> {
   await validateBranchName(cwd, name)
+  assertStashIndex(index)
   await git(cwd, ['stash', 'branch', name, `stash@{${index}}`])
 }
 

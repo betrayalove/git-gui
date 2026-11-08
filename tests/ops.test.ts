@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
 import {
-  applyPatch, cloneRepository, commit, continueOperation, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
+  applyPatch, checkout, cherryPick, cloneRepository, commit, continueOperation, deleteTag, mergeBranch, resetTo, revertCommit, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
   readWorktreeConflicts, resolveWorktreeConflict, stageFiles, stashApply, stashClear, stashDrop, stashPush, unstageFiles
 } from '../src/core/ops'
 import { commitDiff, parseDiff, readBlob, readLog, readRefs, readRemotes, readStashes, readStatus, repoFingerprint, stashDiff, worktreeDiff } from '../src/core/read'
@@ -460,5 +460,22 @@ describe('conflicts in the working tree', () => {
     await expect(resolveWorktreeConflict(dir, '../outside.txt', { content: 'x' })).rejects.toThrow()
     await expect(resolveWorktreeConflict(dir, 'other.txt', { content: 'x' })).rejects.toThrow('не в конфликте')
     expect(existsSync(join(dir, 'other.txt'))).toBe(false)
+  })
+})
+
+describe('arguments from outside', () => {
+  it('refuses values that git would read as options, and changes nothing', async () => {
+    const dir = await createRepo()
+    const tip = await commitFile(dir, 'a.txt', '1\n', 'one')
+    await git(dir, ['tag', 'v1'])
+    await expect(checkout(dir, '--orphan=x')).rejects.toThrow('Недопустимая ссылка')
+    await expect(mergeBranch(dir, '--abort')).rejects.toThrow('Недопустимая ссылка')
+    await expect(cherryPick(dir, '--quit')).rejects.toThrow('Недопустимая ссылка')
+    await expect(revertCommit(dir, '--quit')).rejects.toThrow('Недопустимая ссылка')
+    await expect(resetTo(dir, '--merge', 'hard')).rejects.toThrow('Недопустимая ссылка')
+    await expect(deleteTag(dir, 'v1', '--mirror')).rejects.toThrow('Недопустимое имя remote')
+    await expect(stashDrop(dir, -1)).rejects.toThrow('Недопустимый номер записи stash')
+    expect(await head(dir)).toBe(tip)
+    expect(await git(dir, ['tag'])).toBe('v1\n')
   })
 })
