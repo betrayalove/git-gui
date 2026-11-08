@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { readdir, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type {
   BlameCommit,
@@ -187,8 +189,59 @@ export async function repoRoot(path: string): Promise<string> {
   return gitLine(path, ['rev-parse', '--show-toplevel'])
 }
 
+interface GitDirs {
+  /** This checkout's own folder, which holds HEAD, the index and operations in progress. */
+  gitDir: string
+  /** The folder shared by all checkouts, which holds refs, objects and settings. */
+  commonDir: string
+}
+
+const gitDirsCache = new Map<string, Promise<GitDirs>>()
+
+/** A checkout's folders never move, so they are looked up once instead of on every refresh. */
+function gitDirs(cwd: string): Promise<GitDirs> {
+  let dirs = gitDirsCache.get(cwd)
+  if (!dirs) {
+    dirs = (async () => {
+      const [gitDir, common] = (await git(cwd, ['rev-parse', '--git-dir', '--git-common-dir'])).split('\n')
+      return { gitDir: resolve(cwd, gitDir), commonDir: resolve(cwd, common) }
+    })()
+    gitDirsCache.set(cwd, dirs)
+    dirs.catch(() => gitDirsCache.delete(cwd))
+  }
+  return dirs
+}
+
 export async function commonDir(cwd: string): Promise<string> {
-  return resolve(cwd, await gitLine(cwd, ['rev-parse', '--git-common-dir']))
+  return (await gitDirs(cwd)).commonDir
+}
+
+const OPERATION_MARKERS = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG']
+
+/**
+ * A value that changes whenever a ref, the index, an operation in progress, a remote or the app's
+ * own records change. It only reads file times and starts no git, so it can be asked every few
+ * seconds. Edits in the working tree do not change it: nothing inside the git folder records them.
+ */
+export async function repoFingerprint(cwd: string): Promise<string> {
+  const { gitDir, commonDir: shared } = await gitDirs(cwd)
+  const refsDir = join(shared, 'refs')
+  // Git replaces a ref by renaming a new file over it, so every update changes the inode or the time.
+  const refs = await readdir(refsDir, { recursive: true }).catch(() => [] as string[])
+  const paths = [
+    ...['HEAD', 'index', ...OPERATION_MARKERS].map((name) => join(gitDir, name)),
+    ...['packed-refs', 'config', 'worktrees', join('logs', 'refs', 'stash'), join('chronicle', 'journal.json'), join('chronicle', 'schedules.json')]
+      .map((name) => join(shared, name)),
+    refsDir,
+    ...refs.map((name) => join(refsDir, name))
+  ]
+  const stats = await Promise.all(paths.map((path) => stat(path).catch(() => null)))
+  const hash = createHash('sha1')
+  paths.forEach((path, index) => {
+    const entry = stats[index]
+    hash.update(`${path}\0${entry ? `${entry.ino}:${entry.size}:${entry.mtimeMs}` : '-'}\n`)
+  })
+  return hash.digest('hex')
 }
 
 export async function readRefs(cwd: string): Promise<RefInfo[]> {
@@ -220,7 +273,10 @@ export async function readRefs(cwd: string): Promise<RefInfo[]> {
 }
 
 export async function readRemotes(cwd: string): Promise<RemoteInfo[]> {
-  const raw = await git(cwd, ['remote', '-v'])
+  const [raw, remoteRefs] = await Promise.all([
+    git(cwd, ['remote', '-v']),
+    git(cwd, ['for-each-ref', '--format=%(refname)%00%(symref)', 'refs/remotes'])
+  ])
   const byName = new Map<string, RemoteInfo>()
   for (const line of raw.split('\n')) {
     const match = /^(\S+)\t(.+) \((fetch|push)\)$/.exec(line)
@@ -230,13 +286,13 @@ export async function readRemotes(cwd: string): Promise<RemoteInfo[]> {
     else entry.pushUrl = match[2]
     byName.set(match[1], entry)
   }
-  for (const entry of byName.values()) {
-    const { stdout, code } = await runGit(
-      cwd,
-      ['symbolic-ref', '--quiet', '--short', `refs/remotes/${entry.name}/HEAD`],
-      { okCodes: [1] }
-    )
-    if (code === 0) entry.defaultBranch = stdout.toString('utf8').trim().replace(`${entry.name}/`, '')
+  // The server's default branch is what refs/remotes/<name>/HEAD points at, when it was recorded.
+  for (const line of remoteRefs.split('\n')) {
+    const [ref, symref] = line.split('\0')
+    if (!symref || !ref.endsWith('/HEAD')) continue
+    const entry = byName.get(ref.slice('refs/remotes/'.length, -'/HEAD'.length))
+    const prefix = `refs/remotes/${entry?.name}/`
+    if (entry && symref.startsWith(prefix)) entry.defaultBranch = symref.slice(prefix.length)
   }
   return [...byName.values()]
 }
@@ -303,7 +359,7 @@ function parseStatus(raw: string): Omit<RepoStatus, 'operation'> {
 }
 
 export async function readOperation(cwd: string): Promise<OperationInProgress | undefined> {
-  const gitDir = resolve(cwd, await gitLine(cwd, ['rev-parse', '--git-dir']))
+  const { gitDir } = await gitDirs(cwd)
   const has = (name: string): boolean => existsSync(join(gitDir, name))
   if (has('rebase-merge') || has('rebase-apply')) return 'rebase'
   if (has('MERGE_HEAD')) return 'merge'

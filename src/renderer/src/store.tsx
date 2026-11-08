@@ -7,6 +7,7 @@ import type { Commit } from '../../shared/types'
 import { appApi, repoClient } from './api'
 
 const PAGE = 5000
+const POLL_MS = 5000
 
 function keyOfRefs(snapshot: RepoSnapshot): string {
   return `${snapshot.status.headSha}|${snapshot.refs.map((ref) => `${ref.ref}=${ref.sha}`).join(',')}`
@@ -181,25 +182,51 @@ export function RepoProvider({ repo, onClose, onOpen, children }: { repo: string
   const runRef = useRef(run)
   runRef.current = run
 
+  const refresh = useCallback((): void => {
+    void client.snapshot().then((next) => {
+      if (keyOfRefs(next) === refsKey.current) setSnapshot(next)
+      else void reload()
+    }).catch(() => {})
+  }, [client, reload])
+  const viewRef = useRef(view)
+  viewRef.current = view
+
   useEffect(() => {
     void reload().catch((error: Error) => toast('error', error.message))
-    const refresh = (): void => {
-      void client.snapshot().then((next) => {
-        if (keyOfRefs(next) === refsKey.current) setSnapshot(next)
-        else void reload()
+    let fingerprint: string | null = null
+    // A snapshot runs git status over the whole working tree, which is slow in a big repository.
+    // Only the changes view needs it this often. Elsewhere a look at the git folder's files says
+    // whether anything moved, and edits made in another app show up once this window is focused.
+    const poll = (): void => {
+      if (document.visibilityState !== 'visible') return
+      if (viewRef.current === 'changes') return refresh()
+      void client.fingerprint().then((next) => {
+        if (next === fingerprint) return
+        fingerprint = next
+        refresh()
       }).catch(() => {})
     }
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') refresh()
+    }
     window.addEventListener('focus', refresh)
-    const interval = setInterval(refresh, 5000)
+    document.addEventListener('visibilitychange', onVisible)
+    const interval = setInterval(poll, POLL_MS)
     const unsubscribe = window.chronicle.onChanged((changed) => {
       if (changed === repo) void reload()
     })
     return () => {
       window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVisible)
       clearInterval(interval)
       unsubscribe()
     }
-  }, [client, reload, repo, toast])
+  }, [client, refresh, reload, repo, toast])
+
+  // Files may have changed while another view was open, and the changes view must not start stale.
+  useEffect(() => {
+    if (view === 'changes') refresh()
+  }, [view, refresh])
 
   useEffect(() => {
     if (!staleNotice) return

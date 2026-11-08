@@ -22,17 +22,20 @@ export interface RepoSnapshot {
 /** Everything the interface may call. The first argument is always the repository path. */
 export const api = {
   snapshot: async (repo: string): Promise<RepoSnapshot> => {
+    const remoteList = read.readRemotes(repo)
     const [status, refs, remotes, stashes, journal, schedules, forgeInfo] = await Promise.all([
       read.readStatus(repo),
       read.readRefs(repo),
-      read.readRemotes(repo),
+      remoteList,
       read.readStashes(repo),
       rewrite.readJournal(repo),
       schedule.listSchedules(repo),
-      forge.forgeContext(repo).catch(() => null)
+      remoteList.then((list) => forge.forgeContext(repo, undefined, list)).catch(() => null)
     ])
     return { status, refs, remotes, stashes, journal, schedules, forge: forgeInfo }
   },
+  /** Cheap enough to ask every few seconds. When it changes, the snapshot is worth reading again. */
+  fingerprint: read.repoFingerprint,
   readLog: read.readLog,
   commitDiff: read.commitDiff,
   stashDiff: read.stashDiff,

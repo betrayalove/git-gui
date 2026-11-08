@@ -6,7 +6,7 @@ import {
   applyPatch, cloneRepository, commit, continueOperation, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
   readWorktreeConflicts, resolveWorktreeConflict, stageFiles, stashApply, stashClear, stashDrop, stashPush, unstageFiles
 } from '../src/core/ops'
-import { commitDiff, parseDiff, readBlob, readLog, readRefs, readRemotes, readStashes, readStatus, stashDiff, worktreeDiff } from '../src/core/read'
+import { commitDiff, parseDiff, readBlob, readLog, readRefs, readRemotes, readStashes, readStatus, repoFingerprint, stashDiff, worktreeDiff } from '../src/core/read'
 import { applyRewrite, rewrittenTagsOnRemote } from '../src/core/rewrite'
 import { buildFilePatch } from '../src/shared/patch'
 import { addOrigin, commitFile, createRepo, head, log, tempDir, write } from './helpers'
@@ -75,6 +75,24 @@ describe('reading', () => {
     await stageFiles(dir, ['a.txt'])
     expect((await worktreeDiff(dir, 'a.txt', true, false)).files[0].additions).toBe(1)
     expect((await worktreeDiff(dir, 'a.txt', false, false)).files).toEqual([])
+  })
+
+  it('changes the fingerprint when refs, the index or the stash change, but not on a plain edit', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', '1\n', 'one')
+    const changes = async (action: () => Promise<unknown> | void): Promise<boolean> => {
+      const before = await repoFingerprint(dir)
+      await action()
+      return (await repoFingerprint(dir)) !== before
+    }
+    expect(await changes(() => write(dir, 'a.txt', '2\n'))).toBe(false)
+    expect(await changes(() => stageFiles(dir, ['a.txt']))).toBe(true)
+    expect(await changes(() => stashPush(dir, 'wip', false))).toBe(true)
+    expect(await changes(() => git(dir, ['branch', 'feature/deep/name']))).toBe(true)
+    expect(await changes(() => commitFile(dir, 'b.txt', '1\n', 'two'))).toBe(true)
+    expect(await changes(() => git(dir, ['pack-refs', '--all']))).toBe(true)
+    expect(await changes(() => git(dir, ['remote', 'add', 'origin', tempDir()]))).toBe(true)
+    expect(await changes(() => stashDrop(dir, 0))).toBe(true)
   })
 })
 
