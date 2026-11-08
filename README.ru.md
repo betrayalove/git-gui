@@ -19,11 +19,7 @@
   <a href="README.md">English</a> · <b>Русский</b>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/history-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/history-light.png">
-  <img src="docs/images/history-dark.png" alt="История коммитов с черновиком правок: одно сообщение изменено, один коммит объединён, один удалён">
-</picture>
+<img src="docs/images/history.png" alt="История коммитов с черновиком правок: одно сообщение изменено, один коммит объединён, один удалён">
 
 ## Зачем нужен Chronicle
 
@@ -85,6 +81,8 @@ Pull Request и Merge Request открываются на сайте с уже �
 | Подключение через SSH-ключ |
 | --- |
 | ![Подключение через SSH-ключ](docs/images/connect.png) |
+
+Интерфейс на русском и английском, есть светлая и тёмная тема. Оба выбора в настройках, а язык до выбора берётся из системы. На снимках английская версия.
 
 ## Скачать
 

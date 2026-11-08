@@ -19,11 +19,7 @@
   <b>English</b> · <a href="README.ru.md">Русский</a>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/history-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/history-light.png">
-  <img src="docs/images/history-dark.png" alt="Commit history with a draft of edits: one message changed, one commit squashed, one dropped">
-</picture>
+<img src="docs/images/history.png" alt="Commit history with a draft of edits: one message changed, one commit squashed, one dropped">
 
 ## Why Chronicle
 
@@ -86,7 +82,7 @@ Pull and merge requests open on the site with the branch already selected.
 | --- |
 | ![Connecting with an SSH key](docs/images/connect.png) |
 
-The interface is currently in Russian.
+The interface is in English and Russian, with a light and a dark theme. Both are in Settings, and the language follows the system until you pick one.
 
 ## Download
 
