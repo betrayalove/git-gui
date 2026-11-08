@@ -6,7 +6,8 @@ import { git, gitLine } from '../src/core/git'
 import { addWorktree, lfsInfo, lfsTrack, listSubmodules, listWorktrees, pruneWorktrees, removeWorktree, updateSubmodules } from '../src/core/workspace'
 import { commitFile, createRepo, tempDir } from './helpers'
 
-const real = (path: string): string => realpathSync(path).replaceAll('\\', '/')
+// The native call also expands Windows short names such as RUNNER~1, as git does.
+const real = (path: string): string => realpathSync.native(path).replaceAll('\\', '/')
 
 describe('worktrees', () => {
   it('adds, lists and removes checkouts of other branches', async () => {
