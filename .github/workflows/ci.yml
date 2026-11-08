@@ -40,6 +40,29 @@ jobs:
           path: e2e-shots
           retention-days: 7
 
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: git --version && git lfs version
+      - run: pnpm typecheck
+      - run: pnpm test
+        env:
+          CHRONICLE_REQUIRE_SSHD: "1"
+          CHRONICLE_REQUIRE_LFS: "1"
+      - run: pnpm test:e2e
+        env:
+          CHRONICLE_REQUIRE_SSHD: "1"
+
   linux:
     runs-on: ubuntu-latest
     timeout-minutes: 15
