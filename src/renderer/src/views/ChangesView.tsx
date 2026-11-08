@@ -205,16 +205,24 @@ export function ChangesView(): ReactNode {
   }
 
   const doCommit = async (thenPush: boolean): Promise<void> => {
-    const done = await run('Создаю коммит', async () => {
+    const branch = status?.head
+    const committed = await run('Создаю коммит', async () => {
       await client.commit({ message, amend })
-      if (thenPush && status?.head) await client.push(status.head)
       return true
     })
-    if (done) {
-      setMessage('')
-      setAmend(false)
-      toast('success', thenPush ? 'Коммит создан и отправлен' : 'Коммит создан')
+    if (!committed) return
+    setMessage('')
+    setAmend(false)
+    if (!thenPush || !branch) {
+      toast('success', 'Коммит создан')
+      return
     }
+    // A separate step, so that retrying after a refused connection pushes again instead of committing again.
+    const pushed = await run('Отправляю', async () => {
+      await client.push(branch)
+      return true
+    })
+    if (pushed) toast('success', 'Коммит создан и отправлен')
   }
 
   const discard = (file: StatusFile): void => {
