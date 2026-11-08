@@ -55,6 +55,8 @@ export function childEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
     LC_ALL: 'C',
     LANGUAGE: 'C',
     GIT_TERMINAL_PROMPT: '0',
+    // Paths come from file names, and a name such as `[id].tsx` would otherwise also match `i.tsx`.
+    GIT_LITERAL_PATHSPECS: '1',
     ...promptEnv(),
     ...(quiet.getStore() ? { CHRONICLE_ASKPASS_MODE: 'background' } : {}),
     ...extra

@@ -111,6 +111,21 @@ describe('working tree', () => {
     expect(await git(dir, ['status', '--porcelain'])).toBe('')
     expect(existsSync(join(dir, 'new.txt'))).toBe(false)
   })
+
+  it('touches only the named file when its name looks like a pattern', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'pages/[id].tsx', '1\n', 'one')
+    await commitFile(dir, 'pages/i.tsx', '1\n', 'two')
+    write(dir, 'pages/[id].tsx', '2\n')
+    write(dir, 'pages/i.tsx', '2\n')
+    write(dir, 'new/[slug].tsx', 'x\n')
+    write(dir, 'new/s.tsx', 'keep\n')
+    await stageFiles(dir, ['pages/[id].tsx'])
+    expect(await git(dir, ['diff', '--cached', '--name-only'])).toBe('pages/[id].tsx\n')
+    await unstageFiles(dir, ['pages/[id].tsx'])
+    await discardFiles(dir, ['pages/[id].tsx'], ['new/[slug].tsx'])
+    expect(await git(dir, ['status', '--porcelain', '--untracked-files=all'])).toBe(' M pages/i.tsx\n?? new/s.tsx\n')
+  })
 })
 
 describe('stash', () => {

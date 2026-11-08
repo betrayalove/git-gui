@@ -79,6 +79,9 @@ export async function updateSubmodules(cwd: string, paths: string[] = []): Promi
   await git(root, ['submodule', 'update', '--init', '--recursive', '--', ...paths])
 }
 
+// LFS patterns are globs, and git-lfs passes them on to the git commands it runs itself.
+const LFS_OPTIONS = { env: { GIT_LITERAL_PATHSPECS: '0' } }
+
 /** Whether Git LFS is installed and what this repository stores with it. */
 export async function lfsInfo(cwd: string): Promise<LfsInfo> {
   const root = await gitLine(cwd, ['rev-parse', '--show-toplevel'])
@@ -88,7 +91,7 @@ export async function lfsInfo(cwd: string): Promise<LfsInfo> {
     .map((line) => line.trim().split(/\s+/)[0])
   const installed = (await runGit(root, ['lfs', 'version'], { okCodes: [1, 128] }).catch(() => ({ code: -1 }))).code === 0
   if (!installed) return { installed, used: patterns.length > 0, patterns, files: [] }
-  const raw = await git(root, ['lfs', 'ls-files'])
+  const raw = await git(root, ['lfs', 'ls-files'], LFS_OPTIONS)
   // Each line is "<oid> <* or -> <path>": a star means the content is here, a dash only the pointer.
   const files = raw.split('\n').map((line) => /^\S+ ([*-]) (.+)$/.exec(line)).filter((match) => match !== null)
     .map((match) => ({ path: match[2], downloaded: match[1] === '*' }))
@@ -96,12 +99,12 @@ export async function lfsInfo(cwd: string): Promise<LfsInfo> {
 }
 
 export async function lfsPull(cwd: string): Promise<void> {
-  await git(cwd, ['lfs', 'pull'])
+  await git(cwd, ['lfs', 'pull'], LFS_OPTIONS)
 }
 
 /** Stores files matching `pattern` in LFS from now on. Existing history is not changed. */
 export async function lfsTrack(cwd: string, pattern: string): Promise<void> {
   if (!pattern.trim() || pattern.startsWith('-')) throw new Error(`Недопустимая маска: ${pattern}`)
   const root = await gitLine(cwd, ['rev-parse', '--show-toplevel'])
-  await git(root, ['lfs', 'track', '--', pattern.trim()])
+  await git(root, ['lfs', 'track', '--', pattern.trim()], LFS_OPTIONS)
 }
