@@ -126,6 +126,42 @@ interface RewriteSequence {
   base: string | null
   tip: string
   todo: TodoItem[]
+  /** A commit to rebuild the range on, instead of its own base: moving a branch onto another. */
+  onto?: string
+}
+
+/** What merging `ref` into the current branch would do, worked out without touching anything. */
+export interface MergePreview {
+  ref: string
+  head: string
+  target: string
+  /** The branch already contains everything. */
+  upToDate: boolean
+  /** The branch can simply move forward to the target. */
+  fastForward: boolean
+  /** Commits the merge brings in, newest first, at most a page. */
+  incoming: Commit[]
+  incomingCount: number
+  /** Commits only the current branch has. */
+  localCount: number
+  /** Files both sides changed in ways git cannot combine. */
+  conflicts: string[]
+}
+
+export type MergeMode = 'auto' | 'no-ff' | 'squash'
+
+/** What moving a branch onto another would take. Commits are oldest first. */
+export interface RebaseRange {
+  branch: string
+  tip: string
+  /** Where the branch left the target. Null when they share no history. */
+  base: string | null
+  onto: string
+  commits: Commit[]
+  /** The branch already starts from the target, so there is nothing to move. */
+  upToDate: boolean
+  /** The branch contains merge commits, which a move cannot rebuild exactly. */
+  hasMerges: boolean
 }
 
 export interface RewritePlan {

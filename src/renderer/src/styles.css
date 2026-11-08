@@ -646,3 +646,34 @@ h1, h2, h3, h4, p { margin: 0; }
 .blame-row:hover .blame-before, .blame-before:focus-visible { opacity: 1; }
 .blame-ln { text-align: right; padding-right: 10px; color: var(--text-3); font-family: var(--mono); font-size: 11px; }
 .blame code { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+
+/* Result of a rewrite, and moving a branch */
+.result-history { margin-top: 14px; border: 1px solid var(--border-soft); border-radius: 10px; overflow: hidden; }
+.result-history header { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--surface-2); }
+.result-history h4 { font-size: 12px; font-weight: 600; color: var(--text-2); margin-right: auto; }
+.result-history select { font-size: 12px; }
+.result-history ol { list-style: none; margin: 0; padding: 6px 0; }
+.result-history li { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 12.5px; color: var(--text-3); }
+.result-history li.new { color: var(--text); }
+.result-history li .muted { flex: none; font-size: 11px; }
+.result-history li code { flex: none; font-size: 11px; }
+.result-subject { flex: 1; min-width: 0; }
+.result-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--text-3); }
+.result-history li.new .result-dot { border-color: var(--draft); background: var(--draft); }
+.rebase-target { display: flex; align-items: flex-end; gap: 14px; }
+.rebase-target .field { width: 260px; flex: none; margin-bottom: 0; }
+.rebase-target .hint { margin: 0 0 8px; }
+.rebase-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 14px; align-items: start; }
+.rebase-steps h4 { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
+.rebase-steps ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.rebase-step { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border-soft); }
+.rebase-step.action-drop .rebase-subject { text-decoration: line-through; opacity: 0.5; }
+.rebase-step.action-squash, .rebase-step.action-fixup { margin-left: 22px; border-style: dashed; }
+.rebase-move { display: flex; flex-direction: column; flex: none; }
+.rebase-move .icon-btn { width: 18px; height: 14px; }
+.rebase-subject { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12.5px; }
+.rebase-subject .muted { font-size: 11px; }
+.rebase-step select { flex: none; font-size: 12px; max-width: 200px; }
+.rebase-result .result-history { margin-top: 0; }
+.merge-incoming-head { margin: 14px 0 6px; font-size: 12px; }
+.merge-alternative { display: block; margin: 4px 0 6px; font-size: 12.5px; }

@@ -4,9 +4,10 @@ import type { UpdateInfo } from '../../shared/types'
 import { appApi, platform } from './api'
 import { AccessDialog } from './components/AccessDialog'
 import { DialogProvider, PushDialog, ReviewDialog, useDialogs } from './components/dialogs'
+import { PullDialog } from './components/MergeDialogs'
 import { PromptHost } from './components/PromptHost'
 import { Sidebar } from './components/Sidebar'
-import { ContextMenu, Icon, type MenuItem } from './components/ui'
+import { Icon } from './components/ui'
 import { plural } from './format'
 import { RepoProvider, useRepo } from './store'
 import { ChangesView } from './views/ChangesView'
@@ -26,17 +27,8 @@ function baseName(path: string): string {
 function Toolbar(): ReactNode {
   const { repo, snapshot, client, run, toast, closeRepo, busy, view, search, setSearch, searchMode, setSearchMode } = useRepo()
   const { show, close } = useDialogs()
-  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const status = snapshot?.status
   const lastApplied = [...(snapshot?.journal ?? [])].reverse().find((entry) => entry.state === 'applied')
-  const pullMenu = (x: number, y: number): void => setMenu({
-    x, y,
-    items: [
-      { label: 'Только перемотка', run: () => void run('Подтягиваю', () => client.pull('ff-only')) },
-      { label: 'С rebase', run: () => void run('Подтягиваю', () => client.pull('rebase')) },
-      { label: 'С merge', run: () => void run('Подтягиваю', () => client.pull('merge')) }
-    ]
-  })
   return (
     <header className={`toolbar platform-${platform}`}>
       <button className="repo-switch" onClick={closeRepo} title={repo}>
@@ -55,9 +47,7 @@ function Toolbar(): ReactNode {
         <button
           className="tool"
           disabled={!status?.upstream}
-          onClick={() => void run('Подтягиваю', () => client.pull('ff-only'))}
-          onContextMenu={(event) => { event.preventDefault(); pullMenu(event.clientX, event.clientY) }}
-          title="Правая кнопка: выбрать способ"
+          onClick={() => show(<PullDialog />)}
         >
           <Icon name="pull" />Pull{status?.behind ? <span className="count">{status.behind}</span> : null}
         </button>
@@ -93,7 +83,6 @@ function Toolbar(): ReactNode {
           </label>
         )}
       </div>
-      {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
     </header>
   )
 }

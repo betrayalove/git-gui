@@ -57,6 +57,7 @@ export const api = {
   createBranch: ops.createBranch,
   deleteBranch: ops.deleteBranch,
   mergeBranch: ops.mergeBranch,
+  mergePreview: ops.mergePreview,
   abortOperation: ops.abortOperation,
   cherryPick: ops.cherryPick,
   revertCommit: ops.revertCommit,
@@ -95,6 +96,7 @@ export const api = {
   purgeBackups: rewrite.purgeBackups,
   rewrittenTagsOnRemote: rewrite.rewrittenTagsOnRemote,
   signingSetup: rewrite.signingSetup,
+  rebaseRange: rewrite.rebaseRange,
 
   schedulePublish: schedule.schedulePublish,
   publishNow: (repo: string, id: string) => schedule.publishNow(repo, id),

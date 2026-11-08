@@ -9,6 +9,7 @@ import { dateToLocalInput, plural, shortSha } from '../format'
 import { useRepo } from '../store'
 import { ConflictEditor } from './ConflictEditor'
 import { DiffView } from './DiffView'
+import { ResultHistory } from './ResultHistory'
 import { Avatar, Icon, Modal } from './ui'
 
 interface DialogContextValue {
@@ -95,7 +96,7 @@ export function PromptDialog({ title, label, initial = '', placeholder, confirmL
   )
 }
 
-function CommitLine({ commit }: { commit: Commit }): ReactNode {
+export function CommitLine({ commit }: { commit: Commit }): ReactNode {
   return (
     <li className="commit-line">
       <Avatar name={commit.authorName} email={commit.authorEmail} size={18} />
@@ -286,6 +287,7 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
               </tbody>
             </table>
           )}
+          {preview.refUpdates.some((update) => update.kind === 'branch') && <ResultHistory preview={preview} />}
           {!preview.refUpdates.length && !preview.conflicts.length && !preview.blockers.length && (
             <div className="banner">План ничего не меняет.</div>
           )}

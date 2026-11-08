@@ -7,6 +7,7 @@ import type {
   ConflictFile,
   ConflictResolution,
   JournalEntry,
+  RebaseRange,
   RefUpdate,
   RewriteConflict,
   RewritePlan,
@@ -14,8 +15,8 @@ import type {
   SigningSetup,
   TodoItem
 } from '../shared/types'
-import { git, GitError, gitLine, isAncestor, runGit, spawnGit } from './git'
-import { commonDir, readOperation, readRefs, readStatus } from './read'
+import { git, GitError, gitLine, isAncestor, revParse, runGit, spawnGit } from './git'
+import { commonDir, readCommits, readOperation, readRefs, readStatus } from './read'
 
 
 interface RawCommit {
@@ -561,6 +562,11 @@ export async function previewRewrite(
   // Seeds: commits that change directly. Their descendants change because their parents do.
   const seeds = new Set<string>(Object.keys(edits))
   let chain: string[] = []
+  const onto = plan.sequence?.onto ? await revParse(cwd, plan.sequence.onto) : null
+  if (plan.sequence?.onto && !onto) throw new Error(`Не найден коммит ${plan.sequence.onto}`)
+  if (onto && (await isAncestor(cwd, plan.sequence!.tip, onto))) {
+    throw new Error('Ветка уже входит в историю целевой ветки, переносить нечего')
+  }
   if (plan.sequence) {
     chain = await chainBetween(cwd, plan.sequence.base, plan.sequence.tip)
     if (chain.at(-1) !== plan.sequence.tip) throw new Error('Вершина участка указана неверно')
@@ -579,6 +585,7 @@ export async function previewRewrite(
   }
   const toRead = [...affected]
   for (const sha of affected) for (const parent of parentsOf.get(sha)!) toRead.push(parent)
+  if (onto) toRead.push(onto)
   const objects = await readObjects(cwd, [...new Set(toRead)])
   const commits = new Map<string, RawCommit>()
   for (const [sha, object] of objects) commits.set(sha, parseRawCommit(sha, object.data))
@@ -594,6 +601,7 @@ export async function previewRewrite(
   }
 
   let unsignable = 0
+  let alreadyThere = 0
   const write = async (source: RawCommit, parents: string[], tree: string, edit?: CommitEdit): Promise<string> => {
     const next: RawCommit = { ...source, parents, tree, extraHeaders: [...source.extraHeaders] }
     applyEdit(next, edit)
@@ -646,7 +654,7 @@ export async function previewRewrite(
   const processSequence = async (): Promise<boolean> => {
     const { base, todo } = plan.sequence!
     validateSequence(commits, chain, todo)
-    let current = base ? mapped(base) : null
+    let current = onto ?? (base ? mapped(base) : null)
     let group: { head: RawCommit; parent: string | null; tree: string; messages: string[]; members: string[] } | null = null
     const flush = async (): Promise<void> => {
       if (!group) return
@@ -670,6 +678,13 @@ export async function previewRewrite(
         await flush()
         const tree = await replayTree(source, current)
         if (tree === null) return false
+        // Moved onto another branch, a commit whose change is already there would become empty.
+        const ownParentTree = source.parents.length ? treeOf(source.parents[0]) : emptyTree
+        if (onto && !item.split && tree === treeOf(current) && source.tree !== ownParentTree) {
+          mapping.set(item.sha, current)
+          alreadyThere++
+          continue
+        }
         if (item.split) {
           const firstTree = await treeWithPatch(cwd, treeOf(current), item.split.patch)
           if (!firstTree) {
@@ -830,6 +845,7 @@ export async function previewRewrite(
   if (pruner) {
     warnings.push('Старые версии файлов останутся в резервных копиях, reflog и stash, пока ты их не очистишь. Утёкшие секреты нужно отозвать.')
   }
+  if (alreadyThere) warnings.push(`Изменения из коммитов уже есть в целевой ветке, они будут пропущены: ${alreadyThere}`)
   const lost = [...new Set(signaturesLost)]
   if (lost.length) warnings.push(`Подпись снимется с коммитов: ${lost.length}`)
   if (unsignable) warnings.push(`Не удалось подписать заново коммитов необычного формата: ${unsignable}`)
@@ -852,6 +868,28 @@ export async function previewRewrite(
     signaturesLost: lost,
     worktreeChanges,
     description: plan.description ?? 'Правка истории'
+  }
+}
+
+/** The commits a branch would carry onto `onto`, from where the two histories split. */
+export async function rebaseRange(cwd: string, branch: string, onto: string): Promise<RebaseRange> {
+  const tip = await revParse(cwd, `refs/heads/${branch}`)
+  if (!tip) throw new Error(`Ветка ${branch} не найдена`)
+  const ontoSha = await revParse(cwd, onto)
+  if (!ontoSha) throw new Error(`Не найдено: ${onto}`)
+  const { stdout, code } = await runGit(cwd, ['merge-base', tip, ontoSha], { okCodes: [1] })
+  const base = code === 0 ? stdout.toString('utf8').trim() : null
+  const range = base ? [`${base}..${tip}`] : [tip]
+  const all = await readCommits(cwd, ['--reverse', ...range])
+  const firstParent = new Set((await git(cwd, ['rev-list', '--first-parent', ...range, '--'])).split('\n').filter(Boolean))
+  return {
+    branch,
+    tip,
+    base,
+    onto: ontoSha,
+    commits: all.filter((commit) => firstParent.has(commit.sha)),
+    upToDate: base === ontoSha,
+    hasMerges: all.some((commit) => commit.parents.length > 1)
   }
 }
 

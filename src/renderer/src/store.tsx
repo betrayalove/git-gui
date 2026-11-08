@@ -18,6 +18,9 @@ interface AccessRequest {
   retry?: () => void
 }
 
+/** git stopped halfway and left files with conflicts for the person to resolve. */
+const LEFT_CONFLICTS = /CONFLICT \(|Automatic merge failed|could not apply|Resolve all conflicts|after resolving the conflicts/
+
 export type View = 'history' | 'changes' | 'files' | 'stash' | 'schedule' | 'journal'
 
 interface Toast {
@@ -160,6 +163,9 @@ export function RepoProvider({ repo, onClose, children }: { repo: string; onClos
         toast('error', issueSummary(issue, forge?.host))
       } else if (issue && forge) {
         setAccess({ issue, retry: () => void runRef.current(label, action) })
+      } else if (LEFT_CONFLICTS.test(message)) {
+        setView('changes')
+        toast('info', 'Есть конфликты. Выбери для каждого файла, что должно получиться, затем заверши операцию.')
       } else {
         toast('error', message)
       }

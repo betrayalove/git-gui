@@ -4,6 +4,8 @@ import type { RefInfo } from '../../../shared/types'
 import { appApi } from '../api'
 import { useRepo, type View } from '../store'
 import { CleanHistoryDialog, ConfirmDialog, PromptDialog, PushDialog, RenameBranchDialog, RenameRemoteBranchDialog, ReplaceAuthorDialog, useDialogs } from './dialogs'
+import { MergeDialog } from './MergeDialogs'
+import { RebaseDialog } from './RebaseDialog'
 import { ContextMenu, Icon, type MenuItem } from './ui'
 
 function TrackBadge({ info }: { info: RefInfo }): ReactNode {
@@ -65,12 +67,13 @@ export function Sidebar(): ReactNode {
         { label: 'Перейти на ветку', icon: 'branch', disabled: branch.isHead, run: () => void run('Переключаюсь', () => client.checkout(branch.name)) },
         { label: 'Переименовать…', run: () => show(<RenameBranchDialog name={branch.name} upstream={branch.upstream} isDefault={defaults.has(branch.upstream ?? '')} />) },
         { label: 'Отправить на сервер…', icon: 'push', run: () => show(<PushDialog branch={branch.name} />) },
+        { label: 'Перенести на другую ветку…', icon: 'branch', run: () => show(<RebaseDialog branch={branch.name} />) },
         ...(forge && branch.upstream?.startsWith(`${forge.remote}/`) && newRequestUrl(forge, branch.upstream.slice(forge.remote.length + 1)) ? [{
           label: `Создать ${label} на сайте`,
           icon: 'external',
           run: () => void appApi.openExternal(newRequestUrl(forge, branch.upstream!.slice(forge.remote.length + 1))!)
         }] : []),
-        { label: `Влить в ${status?.head ?? 'текущую'}`, disabled: branch.isHead || !status?.head, run: () => void run('Вливаю', () => client.mergeBranch(branch.ref)) },
+        { label: `Влить в ${status?.head ?? 'текущую'}`, disabled: branch.isHead || !status?.head, run: () => show(<MergeDialog target={branch.name} />) },
         { separator: true },
         {
           label: 'Удалить…', icon: 'trash', danger: true, disabled: branch.isHead,

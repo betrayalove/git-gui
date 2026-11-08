@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { BlobContent, Commit, ConflictResolution, PushPreview, RenameBranchResult } from '../shared/types'
-import { git, gitLine, revParse, runGit } from './git'
+import type { BlobContent, Commit, ConflictResolution, MergeMode, MergePreview, PushPreview, RenameBranchResult } from '../shared/types'
+import { git, gitLine, isAncestor, revParse, runGit } from './git'
 import { readCommits, readRefs, readRemotes } from './read'
 import { sshCommandFor } from './ssh'
 
@@ -85,8 +85,40 @@ export async function deleteBranch(cwd: string, name: string, force: boolean): P
   await git(cwd, ['branch', force ? '-D' : '-d', '--', name])
 }
 
-export async function mergeBranch(cwd: string, ref: string): Promise<void> {
-  await git(cwd, ['merge', '--no-edit', ref])
+const INCOMING_PAGE = 50
+
+/** Predicts a merge into the current branch, including the files that would conflict. */
+export async function mergePreview(cwd: string, ref: string): Promise<MergePreview> {
+  const head = await revParse(cwd, 'HEAD')
+  if (!head) throw new Error('В текущей ветке ещё нет коммитов')
+  const target = await revParse(cwd, ref)
+  if (!target) throw new Error(`Не найдено: ${ref}`)
+  const count = async (range: string): Promise<number> => Number(await gitLine(cwd, ['rev-list', '--count', range, '--']))
+  const [incomingCount, localCount] = await Promise.all([count(`${head}..${target}`), count(`${target}..${head}`)])
+  const preview: MergePreview = {
+    ref, head, target,
+    upToDate: incomingCount === 0,
+    fastForward: incomingCount > 0 && localCount === 0 && (await isAncestor(cwd, head, target)),
+    incoming: incomingCount ? await readCommits(cwd, [`--max-count=${INCOMING_PAGE}`, `${head}..${target}`]) : [],
+    incomingCount,
+    localCount,
+    conflicts: []
+  }
+  if (incomingCount && !preview.fastForward) {
+    // Exit code 1 means conflicts. The tree it builds is never referenced, so nothing changes.
+    const { stdout, code } = await runGit(cwd, ['merge-tree', '--write-tree', '--name-only', '--no-messages', head, target], { okCodes: [1] })
+    if (code === 1) preview.conflicts = stdout.toString('utf8').split('\n').slice(1).filter(Boolean)
+  }
+  return preview
+}
+
+/**
+ * Merges into the current branch. A conflict leaves the merge in progress for the editor, and
+ * the error says so; nothing is rolled back.
+ */
+export async function mergeBranch(cwd: string, ref: string, mode: MergeMode = 'auto'): Promise<void> {
+  const flags = mode === 'no-ff' ? ['--no-ff'] : mode === 'squash' ? ['--squash'] : []
+  await git(cwd, ['merge', '--no-edit', ...flags, ref])
 }
 
 export async function abortOperation(cwd: string, operation: string): Promise<void> {
