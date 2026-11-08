@@ -37,7 +37,7 @@ export function issueSummary(issue: AccessIssue, host?: string): string {
     case 'host-unknown': return `Это первое подключение к ${server}, и его нужно подтвердить.`
     case 'host-changed': return `Ключ сервера ${server} изменился. Это может быть смена оборудования, а может быть подмена.`
     case 'https-auth': return `Для адреса на ${server} нет сохранённого входа.`
-    case 'no-access': return `У подключённого аккаунта нет доступа к этому репозитории на ${server}, или адрес неверный.`
+    case 'no-access': return `У подключённого аккаунта нет доступа к этому репозиторию на ${server}, или адрес неверный.`
     case 'offline': return `Сервер ${server} недоступен. Проверь интернет: ключи здесь ни при чём.`
     case 'protected': return 'Сервер отклонил отправку: ветка защищена.'
     case 'ssh-missing': return 'На компьютере не найден ssh. Установи Git или OpenSSH и повтори.'

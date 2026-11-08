@@ -392,7 +392,7 @@ export function AccessDialog({ url, repoPath, remote, issue, onClose, onRetry }:
             <Icon name="warning" />
             <div>
               {stage.account
-                ? <>Ключ подключён к аккаунту <b>{stage.account}</b>, но у него нет доступа к этому репозитории, или адрес неверный.</>
+                ? <>Ключ подключён к аккаунту <b>{stage.account}</b>, но у него нет доступа к этому репозиторию, или адрес неверный.</>
                 : 'Ключ подключён, но сервер не открывает этот репозиторий. Возможно, нет доступа или адрес неверный.'}
               {stage.message && <div className="mono-list">{stage.message}</div>}
             </div>
