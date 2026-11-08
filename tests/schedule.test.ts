@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
-import { cancelSchedule, listSchedules, publishDue, publishNow, schedulePublish } from '../src/core/schedule'
+import { cancelSchedule, listSchedules, publishDue, publishNow, schedulePublish, waitingNotice } from '../src/core/schedule'
+import type { ScheduledPublish } from '../src/shared/types'
 import { addOrigin, commitFile, createRepo, head, log, tempDir, write } from './helpers'
 
 async function pushedRepo(): Promise<{ dir: string; bare: string; tip: string }> {
@@ -154,5 +155,24 @@ describe('scheduled publishing', () => {
     expect(await head(dir)).toBe(tip)
     expect(await git(dir, ['for-each-ref', 'refs/chronicle/scheduled'])).toBe('')
     expect(await listSchedules(dir)).toEqual([])
+  })
+})
+
+describe('waiting notices', () => {
+  const waiting = (error?: string): ScheduledPublish => ({
+    id: 'x', repo: '/repo', branch: 'main', remote: 'origin', at: future, dateMode: 'keep',
+    base: 'a', tip: 'b', commits: [], state: 'pending', ...(error ? { error } : {})
+  })
+
+  it('tells about a refusal nobody recognized, so it does not repeat silently', () => {
+    const notice = waitingNotice(waiting('remote: error: GH001: Large files detected.'))
+    expect(notice?.title).toBe('Публикация не проходит: main')
+    expect(notice?.body).toContain('GH001: Large files detected')
+  })
+
+  it('names an access problem and stays quiet while offline', () => {
+    expect(waitingNotice(waiting('git@github.com: Permission denied (publickey).'))?.title).toBe('Публикация ждёт доступа: main')
+    expect(waitingNotice(waiting('ssh: Could not resolve hostname github.com'))).toBeNull()
+    expect(waitingNotice(waiting())).toBeNull()
   })
 })

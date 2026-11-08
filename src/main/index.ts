@@ -11,7 +11,7 @@ import { checkKey, checkRemote, createKey, derivePublicKey, listKeys, probeHost,
 import { classifyAccessError, issueSummary, type AccessPrompt, type PromptReply } from '../shared/access'
 import { cloneRepository, initRepository } from '../core/ops'
 import { isRepository, repoRoot } from '../core/read'
-import { listSchedules, publishDue } from '../core/schedule'
+import { listSchedules, publishDue, waitingNotice } from '../core/schedule'
 import { checkForUpdate } from '../core/updates'
 import { api, type AppApi, type ApiMethod } from './api'
 import { PassphraseStore } from './passphrases'
@@ -33,7 +33,7 @@ const HIDDEN_FLAG = '--chronicle-hidden'
 let startedHidden = false
 let updateChecks = true
 const PROMPT_TIMEOUT_MS = 5 * 60_000
-const warnedAccess = new Set<string>()
+const warnedWaiting = new Set<string>()
 const openPrompts = new Map<string, (reply: PromptReply | null) => void>()
 let passphrases: PassphraseStore
 let askpass: AskpassServer
@@ -163,11 +163,11 @@ async function tick(): Promise<void> {
     }
     for (const result of results) {
       if (result.state === 'pending') {
-        // It stays pending and retries by itself, but someone has to fix the access, and only once needs telling.
-        const issue = result.error ? classifyAccessError(result.error) : null
-        if (issue && issue !== 'offline' && !warnedAccess.has(result.id) && Notification.isSupported()) {
-          warnedAccess.add(result.id)
-          new Notification({ title: `Публикация ждёт доступа: ${result.branch}`, body: issueSummary(issue) }).show()
+        // It stays pending and retries by itself, but someone has to fix the cause, and only once needs telling.
+        const notice = waitingNotice(result)
+        if (notice && !warnedWaiting.has(result.id) && Notification.isSupported()) {
+          warnedWaiting.add(result.id)
+          new Notification(notice).show()
         }
         continue
       }

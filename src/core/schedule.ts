@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { classifyAccessError, issueSummary } from '../shared/access'
 import type { CommitEdit, ScheduledPublish } from '../shared/types'
 import { git, GitError, isAncestor, revParse, runGit } from './git'
 import { lsRemoteBranch, resolveBranchTarget } from './ops'
@@ -197,6 +198,21 @@ export async function publishDue(cwd: string, now: Date = new Date()): Promise<S
     results.push(await publishNow(cwd, item.id, now))
   }
   return results
+}
+
+/**
+ * What to tell the person, once, about a publish that keeps waiting. Null while it only waits for
+ * the network, which comes back by itself. Any other refusal repeats until someone acts.
+ */
+export function waitingNotice(entry: ScheduledPublish): { title: string; body: string } | null {
+  if (entry.state !== 'pending' || !entry.error) return null
+  const issue = classifyAccessError(entry.error)
+  if (issue === 'offline') return null
+  if (issue) return { title: `Публикация ждёт доступа: ${entry.branch}`, body: issueSummary(issue) }
+  return {
+    title: `Публикация не проходит: ${entry.branch}`,
+    body: `Сервер не принял коммиты, попытки продолжатся. Скорее всего, нужно что-то исправить: ${entry.error}`
+  }
 }
 
 /** Cancels a publish and puts the commits back on the local branch. The server is left alone. */
