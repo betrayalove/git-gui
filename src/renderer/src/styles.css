@@ -389,6 +389,8 @@ h1, h2, h3, h4, p { margin: 0; }
 .diff { min-width: 0; }
 .diff-loading, .diff-note { padding: 14px; color: var(--text-3); font-size: 12.5px; }
 .diff-file { border-bottom: 1px solid var(--border-soft); }
+.diff-summary { display: flex; align-items: baseline; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); font-size: 12px; }
+.diff-summary .muted { flex: 1; min-width: 0; }
 .diff-file-head {
   display: flex; align-items: center; gap: 7px; width: 100%; padding: 7px 12px; text-align: left;
   background: var(--surface-2); position: sticky; top: 0; z-index: 1;

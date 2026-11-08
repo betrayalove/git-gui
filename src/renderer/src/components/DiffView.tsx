@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import type { DiffResult, FileDiff } from '../../../shared/types'
+import type { DiffResult, FileDiff, FileState } from '../../../shared/types'
 import { Icon } from './ui'
-import { t } from '../../../shared/i18n'
+import { plural, t } from '../../../shared/i18n'
 
 const MAX_LINES_PER_FILE = 1500
 
@@ -10,6 +10,45 @@ export interface DiffActions {
   hunk?: (file: FileDiff, hunkIndex: number) => ReactNode
   /** Controls shown on a file's header row. */
   file?: (file: FileDiff) => ReactNode
+}
+
+const STATUS_NAME: Partial<Record<FileState, string>> = {
+  added: t('Добавлен'),
+  modified: t('Изменён'),
+  deleted: t('Удалён'),
+  renamed: t('Переименован'),
+  copied: t('Скопирован'),
+  typechange: t('Сменился тип')
+}
+
+/** Whether a changed line of the file contains the searched text. */
+function hasMatch(file: FileDiff, term?: string): boolean {
+  if (!term) return false
+  const needle = term.toLowerCase()
+  return file.hunks.some((hunk) => hunk.lines.some((line) => line.type !== 'context' && line.text.toLowerCase().includes(needle)))
+}
+
+/** How many files changed in each way, and how many lines were added and removed in all. */
+function Summary({ files }: { files: FileDiff[] }): ReactNode {
+  const count = (status: FileState): number => files.filter((file) => file.status === status).length
+  const parts = [
+    [count('added'), t('добавлено: {count}', { count: count('added') })],
+    [count('modified') + count('typechange'), t('изменено: {count}', { count: count('modified') + count('typechange') })],
+    [count('deleted'), t('удалено: {count}', { count: count('deleted') })],
+    [count('renamed') + count('copied'), t('переименовано: {count}', { count: count('renamed') + count('copied') })]
+  ] as const
+  const additions = files.reduce((sum, file) => sum + file.additions, 0)
+  const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
+  return (
+    <div className="diff-summary">
+      <b>{plural(files.length, 'файл', 'файла', 'файлов')}</b>
+      <span className="muted">{parts.filter(([amount]) => amount > 0).map(([, text]) => text).join(', ')}</span>
+      <span className="diff-stat">
+        <span className="add">+{additions}</span>
+        <span className="del">−{deletions}</span>
+      </span>
+    </div>
+  )
 }
 
 /** Marks every occurrence of `term`, ignoring case, the way the search found it. */
@@ -38,7 +77,7 @@ function FileBlock({ file, defaultOpen, actions, highlight }: { file: FileDiff; 
       {actions?.file && <div className="diff-file-action">{actions.file(file)}</div>}
       <button className="diff-file-head" onClick={() => setOpen(!open)} aria-expanded={open}>
         <Icon name="chevron" size={12} style={{ transform: open ? 'rotate(90deg)' : undefined }} />
-        <span className={`file-badge file-${file.status}`}>{file.status[0].toUpperCase()}</span>
+        <span className={`file-badge file-${file.status}`} title={STATUS_NAME[file.status]}>{file.status[0].toUpperCase()}</span>
         <span className="diff-path" title={file.path}>
           {file.oldPath && <span className="diff-old">{file.oldPath} → </span>}
           {file.path}
@@ -85,14 +124,30 @@ function FileBlock({ file, defaultOpen, actions, highlight }: { file: FileDiff; 
   )
 }
 
-export function DiffView({ diff, actions, highlight }: { diff: DiffResult | null; actions?: DiffActions; highlight?: string }): ReactNode {
+/**
+ * Shows changed files. With `collapsed` the files start closed under a summary, so a commit opens
+ * as a list of what changed; a file that holds the searched text still opens by itself.
+ */
+export function DiffView({ diff, actions, highlight, collapsed = false }: {
+  diff: DiffResult | null
+  actions?: DiffActions
+  highlight?: string
+  collapsed?: boolean
+}): ReactNode {
   if (!diff) return <div className="diff-loading">{t('Загружаю изменения…')}</div>
   if (!diff.files.length) return <div className="diff-note">{t('Изменений нет')}</div>
   return (
     <div className="diff">
       {diff.truncated && <div className="banner warn">{t('Изменения слишком большие и показаны не полностью.')}</div>}
+      {collapsed && <Summary files={diff.files} />}
       {diff.files.map((file, index) => (
-        <FileBlock key={`${file.path}-${index}`} file={file} defaultOpen={diff.files.length <= 20} actions={actions} highlight={highlight} />
+        <FileBlock
+          key={`${file.path}-${index}`}
+          file={file}
+          defaultOpen={collapsed ? hasMatch(file, highlight) : diff.files.length <= 20}
+          actions={actions}
+          highlight={highlight}
+        />
       ))}
     </div>
   )

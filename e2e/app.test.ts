@@ -334,6 +334,10 @@ describe('Chronicle', () => {
     await row('Коммит из терминала').waitFor({ timeout: 10000 })
     await page.emulateMedia({ colorScheme: 'dark' })
     await row('Коммит из терминала').click()
+    // A commit opens as a list of files; the lines show once a file is opened.
+    await page.locator('.inspector .diff-summary').waitFor()
+    expect(await page.locator('.inspector .diff-line').count()).toBe(0)
+    await page.locator('.inspector .diff-file-head', { hasText: 'outside.txt' }).click()
     await page.locator('.diff-line.add').first().waitFor()
     await shot('14-dark')
     expect(pageErrors).toEqual([])
