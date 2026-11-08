@@ -142,16 +142,30 @@ h1, h2, h3, h4, p { margin: 0; }
 .pill.state-done { background: var(--add-soft); color: var(--add); }
 .pill.state-failed { background: var(--del-soft); color: var(--del); }
 
-.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; min-width: 0; flex: 1; }
-.field > span { font-size: 11.5px; font-weight: 500; color: var(--text-2); }
-.field input, .field textarea, .field select, .commit-box textarea {
-  width: 100%; padding: 7px 10px; border-radius: 7px; user-select: text;
-  background: var(--bg); border: 1px solid var(--border); resize: vertical;
+/* Every text field, list and date picker looks the same wherever it sits. :where() keeps these
+   rules weaker than any class, so a field with its own look, such as the search box, keeps it. */
+:where(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+  padding: 6px 10px; border-radius: 7px; user-select: text;
+  background: var(--bg); border: 1px solid var(--border);
   transition: border-color 0.12s, box-shadow 0.12s;
 }
-.field input:focus, .field textarea:focus, .field select:focus, .commit-box textarea:focus {
+:where(input:not([type="checkbox"], [type="radio"]), select, textarea):focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
 }
+:where(input, select, textarea):disabled { opacity: 0.55; }
+:where(textarea) { resize: vertical; }
+/* The system arrow of a list is drawn for one theme only, so it is replaced with one that suits both. */
+:where(select) {
+  appearance: none; padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8d97' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+}
+:where(select) option { background: var(--surface-2); color: var(--text); }
+
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; min-width: 0; flex: 1; }
+.field > span { font-size: 11.5px; font-weight: 500; color: var(--text-2); }
+.field input, .field textarea, .field select, .commit-box textarea { width: 100%; padding: 7px 10px; }
+.field select { padding-right: 28px; }
 .field.edited > span { color: var(--draft); }
 .field.edited input, .field.edited textarea { border-color: var(--draft); background: var(--draft-soft); }
 .field-row { display: flex; gap: 10px; }
@@ -246,7 +260,7 @@ h1, h2, h3, h4, p { margin: 0; }
   border-radius: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text-3);
 }
 .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--text); user-select: text; }
+.search input { flex: 1; min-width: 0; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; outline: none; color: var(--text); user-select: text; }
 .search-mode { flex: none; height: 20px; padding: 0 6px; margin-right: -5px; border-radius: 5px; font: 600 10.5px var(--mono); color: var(--text-3); }
 .search-mode:hover { color: var(--text); background: var(--surface-2); }
 .search-mode.active { color: var(--accent); background: var(--accent-soft); }
@@ -652,7 +666,7 @@ h1, h2, h3, h4, p { margin: 0; }
 .result-history { margin-top: 14px; border: 1px solid var(--border-soft); border-radius: 10px; overflow: hidden; }
 .result-history header { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--surface-2); }
 .result-history h4 { font-size: 12px; font-weight: 600; color: var(--text-2); margin-right: auto; }
-.result-history select { font-size: 12px; }
+.result-history select { font-size: 12px; padding-top: 3px; padding-bottom: 3px; }
 .result-history ol { list-style: none; margin: 0; padding: 6px 0; }
 .result-history li { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 12.5px; color: var(--text-3); }
 .result-history li.new { color: var(--text); }
@@ -674,7 +688,7 @@ h1, h2, h3, h4, p { margin: 0; }
 .rebase-move .icon-btn { width: 18px; height: 14px; }
 .rebase-subject { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12.5px; }
 .rebase-subject .muted { font-size: 11px; }
-.rebase-step select { flex: none; font-size: 12px; max-width: 200px; }
+.rebase-step select { flex: none; font-size: 12px; max-width: 200px; padding-top: 4px; padding-bottom: 4px; }
 .rebase-result .result-history { margin-top: 0; }
 .merge-incoming-head { margin: 14px 0 6px; font-size: 12px; }
 .merge-alternative { display: block; margin: 4px 0 6px; font-size: 12.5px; }
