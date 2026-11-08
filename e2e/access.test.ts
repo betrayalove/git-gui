@@ -255,9 +255,12 @@ describe.skipIf(!server)('Connecting without an account', () => {
     })
 
     it('does not ask again in the same session', async () => {
-      await run.page.waitForTimeout(100)
+      // The previous fetch left the same message. Waiting on it would let this fetch still be
+      // running, and asking, when the next test forgets the password.
+      const done = run.page.getByText('Данные с сервера обновлены')
+      await expect.poll(() => done.count()).toBe(0)
       await fetchButton(run.page).click()
-      await run.page.getByText('Данные с сервера обновлены').first().waitFor()
+      await done.waitFor()
       expect(await run.page.getByRole('dialog', { name: 'Пароль SSH-ключа' }).count()).toBe(0)
     })
 
