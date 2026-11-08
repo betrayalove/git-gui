@@ -197,7 +197,7 @@ export function App(): ReactNode {
   return (
     <>
       {repo ? (
-        <RepoProvider key={repo} repo={repo} onClose={close}>
+        <RepoProvider key={repo} repo={repo} onClose={close} onOpen={setRepo}>
           <DialogProvider>
             <Workspace />
           </DialogProvider>

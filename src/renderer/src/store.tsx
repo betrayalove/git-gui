@@ -65,6 +65,8 @@ interface RepoContextValue {
   focus: { sha: string; at: number } | null
   filePath: string | null
   openFile: (path: string) => void
+  /** Switches the window to another repository, such as a worktree or a submodule. */
+  openRepository: (path: string) => void
 }
 
 export type SearchMode = 'message' | 'content'
@@ -77,7 +79,7 @@ export function useRepo(): RepoContextValue {
   return value
 }
 
-export function RepoProvider({ repo, onClose, children }: { repo: string; onClose: () => void; children: ReactNode }): ReactNode {
+export function RepoProvider({ repo, onClose, onOpen, children }: { repo: string; onClose: () => void; onOpen: (repo: string) => void; children: ReactNode }): ReactNode {
   const client = useMemo(() => repoClient(repo), [repo])
   const [snapshot, setSnapshot] = useState<RepoSnapshot | null>(null)
   const [commits, setCommits] = useState<Commit[]>([])
@@ -211,7 +213,8 @@ export function RepoProvider({ repo, onClose, children }: { repo: string; onClos
   const value: RepoContextValue = {
     repo, client, snapshot, commits, hasMore, loadMore, reload, draft, setDraft, draftCount,
     view, setView, selected, setSelected, busy, run, toast, toasts, dismissToast, closeRepo: onClose,
-    access, showAccess: setAccess, search, setSearch, searchMode, setSearchMode, jumpTo, focus, filePath, openFile
+    access, showAccess: setAccess, search, setSearch, searchMode, setSearchMode, jumpTo, focus, filePath, openFile,
+    openRepository: (path: string) => void appApi.openRepository(path).then(onOpen).catch((error: Error) => toast('error', error.message))
   }
   return <RepoContext.Provider value={value}>{children}</RepoContext.Provider>
 }

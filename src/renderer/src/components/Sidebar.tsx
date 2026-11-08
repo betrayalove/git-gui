@@ -6,6 +6,7 @@ import { useRepo, type View } from '../store'
 import { CleanHistoryDialog, ConfirmDialog, PromptDialog, PushDialog, RenameBranchDialog, RenameRemoteBranchDialog, ReplaceAuthorDialog, useDialogs } from './dialogs'
 import { MergeDialog } from './MergeDialogs'
 import { RebaseDialog } from './RebaseDialog'
+import { AddWorktreeDialog, RepoExtrasSections } from './RepoExtras'
 import { ContextMenu, Icon, type MenuItem } from './ui'
 
 function TrackBadge({ info }: { info: RefInfo }): ReactNode {
@@ -18,7 +19,7 @@ function TrackBadge({ info }: { info: RefInfo }): ReactNode {
   )
 }
 
-function Section({ title, count, children, action }: { title: string; count: number; children: ReactNode; action?: ReactNode }): ReactNode {
+export function Section({ title, count, children, action }: { title: string; count: number; children: ReactNode; action?: ReactNode }): ReactNode {
   const [open, setOpen] = useState(true)
   return (
     <section className="side-section">
@@ -35,7 +36,7 @@ function Section({ title, count, children, action }: { title: string; count: num
 }
 
 export function Sidebar(): ReactNode {
-  const { snapshot, view, setView, client, run, jumpTo } = useRepo()
+  const { snapshot, view, setView, client, run, jumpTo, reload } = useRepo()
   const { show } = useDialogs()
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const refs = useMemo(() => snapshot?.refs ?? [], [snapshot?.refs])
@@ -186,6 +187,7 @@ export function Sidebar(): ReactNode {
             </Section>
           )
         })}
+        <RepoExtrasSections Section={Section} />
         <Section title="Теги" count={tags.length}>
           {tags.map((tag) => (
             <button key={tag.ref} className="side-item" title={tag.name} onClick={() => jumpTo(tag.target)} onContextMenu={(event) => tagMenu(event, tag)}>
@@ -198,6 +200,7 @@ export function Sidebar(): ReactNode {
       <div className="side-tools">
         <button onClick={() => { setView('history'); show(<ReplaceAuthorDialog />) }}><Icon name="users" size={14} />Заменить автора</button>
         <button onClick={() => show(<CleanHistoryDialog />)}><Icon name="broom" size={14} />Очистка истории</button>
+        <button onClick={() => show(<AddWorktreeDialog onDone={() => void reload()} />)}><Icon name="folder" size={14} />Ветка в отдельной папке</button>
         {requestsPage && (
           <button onClick={() => void appApi.openExternal(requestsPage)}><Icon name="external" size={14} />{label} на сайте</button>
         )}

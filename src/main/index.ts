@@ -249,6 +249,7 @@ const appHandlers: AppApi = {
     return rememberRepo(path)
   },
   copyText: async (text) => clipboard.writeText(text),
+  revealPath: async (path) => shell.showItemInFolder(path),
   openExternal: async (url) => {
     if (!url.startsWith('https://')) throw new Error(`Адрес не открыт: ${url}`)
     await shell.openExternal(url)

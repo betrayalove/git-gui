@@ -17,7 +17,7 @@ export function ResultHistory({ preview }: { preview: RewritePreview }): ReactNo
   const [name, setName] = useState(preferred?.name)
   const update = branches.find((item) => item.name === name) ?? preferred
   const [commits, setCommits] = useState<Commit[] | null>(null)
-  const created = useMemo(() => new Set(Object.values(preview.mapping).filter(Boolean)), [preview.mapping])
+  const created = useMemo(() => new Set(preview.created), [preview.created])
 
   useEffect(() => {
     if (!update) return

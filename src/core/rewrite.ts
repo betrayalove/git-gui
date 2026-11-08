@@ -602,6 +602,7 @@ export async function previewRewrite(
 
   let unsignable = 0
   let alreadyThere = 0
+  const created = new Set<string>()
   const write = async (source: RawCommit, parents: string[], tree: string, edit?: CommitEdit): Promise<string> => {
     const next: RawCommit = { ...source, parents, tree, extraHeaders: [...source.extraHeaders] }
     applyEdit(next, edit)
@@ -620,6 +621,7 @@ export async function previewRewrite(
       const signed = await signCommit(cwd, next)
       if (signed) {
         treeOfNew.set(signed, tree)
+        created.add(signed)
         return signed
       }
       unsignable++
@@ -627,6 +629,7 @@ export async function previewRewrite(
     if (source.signed) signaturesLost.push(source.sha)
     const sha = batch.add(serializeCommit(next))
     treeOfNew.set(sha, tree)
+    created.add(sha)
     return sha
   }
 
@@ -862,6 +865,7 @@ export async function previewRewrite(
     mapping: mappingRecord,
     refUpdates,
     rewrittenCount,
+    created: [...created],
     conflicts,
     warnings,
     blockers,

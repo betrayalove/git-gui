@@ -128,3 +128,15 @@ async function createRepoCopy(dir: string): Promise<string> {
   await git(copy, ['branch', 'feature', 'origin/feature'])
   return copy
 }
+
+describe('what a preview reports as new', () => {
+  it('lists only commits it wrote, not where a dropped commit went', async () => {
+    const { dir } = await forkedRepo()
+    const plan = await movePlan(dir, 'feature', 'main', (draft) => { draft.sequence!.todo[0].action = 'drop' })
+    const preview = await previewRewrite(dir, plan)
+    const main = await head(dir, 'main')
+    expect(Object.values(preview.mapping)).toContain(main)
+    expect(preview.created).not.toContain(main)
+    expect(preview.created).toHaveLength(1)
+  })
+})

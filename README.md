@@ -35,6 +35,7 @@ Interactive rebase is powerful, but you edit a text file and learn the result af
 
 - **Change any commit:** message, author, committer and dates, including commits you have already pushed.
 - **Reorder** commits by dragging them.
+- **Move a branch onto another** and edit it on the way: reorder, squash or drop commits while the resulting history updates next to the list.
 - **Squash, drop and split** commits. Splitting works hunk by hunk.
 - **Replace an author** across the whole history.
 - **Clean history:** remove files from every commit, or collapse a branch into one commit.
@@ -42,7 +43,7 @@ Interactive rebase is powerful, but you edit a text file and learn the result af
 
 ### Stay safe
 
-- **Nothing changes until you apply.** The preview builds the real new history without moving any branch.
+- **Nothing changes until you apply.** The preview builds the real new history without moving any branch, and shows the branch exactly as it will look.
 - **Atomic updates.** All branches and tags move together, or none of them do.
 - **Undo and redo.** Every rewrite is kept in a journal with backups.
 - **Protected force-push.** It uses `--force-with-lease`, so commits someone else pushed meanwhile are not overwritten. You see what appears and what vanishes on the server first.
@@ -52,9 +53,18 @@ Interactive rebase is powerful, but you edit a text file and learn the result af
 
 Take the latest commits off a branch, locally and on the server, and publish them at a set time. Chronicle waits in the tray, and checks in advance whether the server will accept the push with nobody at the computer.
 
+### Understand the code
+
+- **Search the changes,** not just the messages: find every commit that added or removed a line with some text, across all branches.
+- **File history** that follows renames, with the change made in each version.
+- **Blame:** who last changed each line, grouped by commit and shaded by age. One click opens the commit, another shows the file just before it.
+
 ### Everyday Git
 
-Commit, push, pull and fetch. Stage individual hunks. Manage stashes, branches and tags, including renaming a branch on the server. Cherry-pick, revert and reset. Compare changes in a built-in diff view.
+- **Merge and pull with foresight.** Before merging, Chronicle lists the files that will conflict. Pull offers rebase or merge, and with rebase every conflict is resolved in the preview, before anything changes. Conflicts that do happen open in a built-in editor.
+- **Worktrees:** open another branch in its own folder and switch between them in one click.
+- **Submodules** with their state, and **Git LFS** files with download and tracking.
+- Commit, push and fetch, staging of individual hunks, stashes, branches and tags, cherry-pick, revert and reset.
 
 ### No account needed
 

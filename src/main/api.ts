@@ -4,6 +4,7 @@ import * as read from '../core/read'
 import * as rewrite from '../core/rewrite'
 import * as schedule from '../core/schedule'
 import * as ssh from '../core/ssh'
+import * as workspace from '../core/workspace'
 import { withoutPrompts } from '../core/git'
 import type { AccessPrompt, PromptReply, SshTarget } from '../shared/access'
 import type { ForgeContext, UpdateInfo, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
@@ -58,6 +59,15 @@ export const api = {
   deleteBranch: ops.deleteBranch,
   mergeBranch: ops.mergeBranch,
   mergePreview: ops.mergePreview,
+  listWorktrees: workspace.listWorktrees,
+  addWorktree: workspace.addWorktree,
+  removeWorktree: workspace.removeWorktree,
+  pruneWorktrees: workspace.pruneWorktrees,
+  listSubmodules: workspace.listSubmodules,
+  updateSubmodules: workspace.updateSubmodules,
+  lfsInfo: workspace.lfsInfo,
+  lfsPull: workspace.lfsPull,
+  lfsTrack: workspace.lfsTrack,
   abortOperation: ops.abortOperation,
   cherryPick: ops.cherryPick,
   revertCommit: ops.revertCommit,
@@ -124,6 +134,7 @@ export interface AppApi {
   initRepository(path: string): Promise<string>
   copyText(text: string): Promise<void>
   openExternal(url: string): Promise<void>
+  revealPath(path: string): Promise<void>
   sshListKeys(host?: string): Promise<ssh.SshKey[]>
   sshProbeHost(target: SshTarget): Promise<ssh.HostProbe>
   sshCheckKey(key: ssh.SshKey, target: SshTarget, interactive?: boolean): Promise<ssh.KeyStatus>

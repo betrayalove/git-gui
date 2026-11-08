@@ -214,6 +214,8 @@ export interface RewritePreview {
   mapping: Record<string, string | null>
   refUpdates: RefUpdate[]
   rewrittenCount: number
+  /** Commits written by this rewrite. Mapping values can also be old commits, such as where a dropped one went. */
+  created: string[]
   conflicts: RewriteConflict[]
   warnings: string[]
   blockers: string[]
@@ -296,6 +298,36 @@ export interface BlameResult {
   commits: Record<string, BlameCommit>
   /** The file is binary or too big to show line by line. */
   skipped?: 'binary' | 'too-large'
+}
+
+export interface Worktree {
+  path: string
+  head: string | null
+  /** Null for a detached checkout. */
+  branch: string | null
+  main: boolean
+  /** The checkout open in this window. */
+  current: boolean
+  locked: boolean
+  /** Its folder is gone, so git can forget it. */
+  prunable: boolean
+  bare: boolean
+}
+
+export interface Submodule {
+  path: string
+  sha: string
+  /** Missing: not downloaded. Changed: a different commit is checked out than the one recorded. */
+  state: 'ok' | 'missing' | 'changed' | 'conflict'
+  url: string | null
+  describe: string | null
+}
+
+export interface LfsInfo {
+  installed: boolean
+  used: boolean
+  patterns: string[]
+  files: { path: string; downloaded: boolean }[]
 }
 
 export interface BlobContent {
