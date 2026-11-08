@@ -156,6 +156,7 @@ describe.skipIf(!server)('Connecting without an account', () => {
     it('rejects a short or mismatched password', async () => {
       await run.page.getByLabel('Пароль ключа, необязательно').fill('abc')
       expect(await run.page.getByRole('button', { name: 'Создать ключ' }).isDisabled()).toBe(true)
+      for (const label of ['Пароль ключа, необязательно', 'Ещё раз']) expect(await run.page.getByLabel(label).getAttribute('type')).toBe('password')
       await run.page.getByLabel('Пароль ключа, необязательно').fill('длинный пароль')
       await run.page.getByLabel('Ещё раз').fill('другой')
       expect(await run.page.getByRole('button', { name: 'Создать ключ' }).isDisabled()).toBe(true)
@@ -232,6 +233,8 @@ describe.skipIf(!server)('Connecting without an account', () => {
       await dialog.getByText('id_ed25519').waitFor()
       if (shots) await run.page.screenshot({ path: join(shots, '35-passphrase.png') })
       expect(await run.keychain()).toEqual({ sync: 0, any: 0 })
+      // A password shows as dots, never as text.
+      expect(await dialog.getByLabel('Пароль ключа').getAttribute('type')).toBe('password')
       await dialog.getByLabel('Пароль ключа').fill('неверный')
       await dialog.getByRole('button', { name: 'Продолжить' }).click()
       await run.page.getByText('Пароль не подошёл').waitFor()

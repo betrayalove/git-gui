@@ -68,6 +68,7 @@ These rules protect people's repositories. They are not style preferences.
 ## Secrets
 
 - Passwords and keys never go on a command line, where other programs can read them, or in a log, a toast or a file in plain text. Use `AskpassServer.oneShot`.
+- Every field where a person types a password, a key passphrase, a token or a PIN hides it behind dots (`type="password"`).
 - Do not read private key files. Pass their path to ssh.
 - On macOS any `safeStorage` call can open a system dialog, and the synchronous calls freeze the whole app while it is open. Use only the asynchronous calls, and only when actually saving or reading a secret. Never call them just to see whether encryption works.
 - Never overwrite a user's key, change `~/.ssh/config` or change global git settings. Settings for one repository go in that repository.
