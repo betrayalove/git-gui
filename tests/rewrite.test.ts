@@ -32,6 +32,19 @@ describe('metadata edits', () => {
     expect(await gitLine(dir, ['log', '--format=%b', '-1', 'HEAD~2'])).toBe('With a body')
   })
 
+  it('applies nothing when branches moved after the preview was shown', async () => {
+    const { dir, shas } = await linearRepo()
+    const plan: RewritePlan = { edits: { [shas[1]]: { message: 'changed' } } }
+    const preview = await previewRewrite(dir, plan)
+    const moved = await commitFile(dir, 'late.txt', 'late\n', 'late')
+    await expect(applyRewrite(dir, plan, preview.refUpdates)).rejects.toThrow('Ветки изменились после предпросмотра')
+    expect(await head(dir)).toBe(moved)
+    expect(await log(dir)).toContain('second')
+    const fresh = await previewRewrite(dir, plan)
+    await applyRewrite(dir, plan, fresh.refUpdates)
+    expect(await log(dir)).toContain('changed')
+  })
+
   it('leaves commits older than the edit on their original SHA', async () => {
     const { dir, shas } = await linearRepo()
     await applyRewrite(dir, { edits: { [shas[2]]: { message: 'changed' } } })

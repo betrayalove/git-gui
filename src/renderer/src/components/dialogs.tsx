@@ -171,27 +171,34 @@ export function ReviewDialog({ plan: basePlan }: { plan: RewritePlan }): ReactNo
   const [error, setError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
   const [resolving, setResolving] = useState(false)
+  // Bumped after a failed apply, so the preview shows the state the next attempt would use.
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     setPreview(null)
+    setError(null)
     client.previewRewrite(plan)
       .then((result) => { if (!cancelled) setPreview(result) })
       .catch((reason: Error) => { if (!cancelled) setError(reason.message) })
     return () => { cancelled = true }
-  }, [client, plan])
+  }, [client, plan, attempt])
 
   const apply = async (): Promise<void> => {
+    if (!preview) return
     setApplying(true)
     const result = await run('Применяю правки', async () => {
-      const applied = await client.applyRewrite({ ...plan, resign })
+      const applied = await client.applyRewrite({ ...plan, resign }, preview.refUpdates)
       // Every SHA a draft refers to may have just changed. Clearing it before the reload that
       // follows keeps that reload from mistaking this for a change made outside the app.
       setDraft(() => EMPTY_DRAFT)
       return applied
     })
     setApplying(false)
-    if (!result) return
+    if (!result) {
+      setAttempt((value) => value + 1)
+      return
+    }
     close()
     const { mapping } = result.preview
     setSelected(selected.map((sha) => mapping[sha] ?? sha))

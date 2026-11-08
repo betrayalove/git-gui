@@ -1027,8 +1027,20 @@ export async function moveRefs(
   return entry
 }
 
-export async function applyRewrite(cwd: string, plan: RewritePlan): Promise<{ entry: JournalEntry; preview: RewritePreview }> {
+/** Which refs a preview moves and where each of them stood when it was built. */
+function startingPoint(updates: RefUpdate[]): string {
+  return updates.map((update) => `${update.ref} ${update.before}`).sort().join('\n')
+}
+
+/**
+ * Builds the plan again and moves the refs. `seen` holds the ref updates of the preview the person
+ * looked at: if branches moved since, the result would differ from it, so nothing is applied.
+ */
+export async function applyRewrite(cwd: string, plan: RewritePlan, seen?: RefUpdate[]): Promise<{ entry: JournalEntry; preview: RewritePreview }> {
   const preview = await previewRewrite(cwd, plan, { sign: plan.resign })
+  if (seen && startingPoint(seen) !== startingPoint(preview.refUpdates)) {
+    throw new Error('Ветки изменились после предпросмотра, поэтому ничего не применено. Проверь новый результат.')
+  }
   if (preview.conflicts.length) throw new Error(`Конфликт в коммите ${preview.conflicts[0].sha.slice(0, 8)}: ${preview.conflicts[0].subject}`)
   if (preview.blockers.length) throw new Error(preview.blockers[0])
   if (!preview.refUpdates.length) throw new Error('План ничего не меняет')
