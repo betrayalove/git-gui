@@ -1,8 +1,8 @@
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
-import { cancelSchedule, listSchedules, publishDue, publishNow, schedulePublish, waitingNotice } from '../src/core/schedule'
+import { cancelSchedule, dismissSchedule, listSchedules, publishDue, publishNow, schedulePublish, waitingNotice } from '../src/core/schedule'
 import type { ScheduledPublish } from '../src/shared/types'
 import { addOrigin, commitFile, createRepo, head, log, tempDir, write } from './helpers'
 
@@ -174,5 +174,20 @@ describe('waiting notices', () => {
     expect(waitingNotice(waiting('git@github.com: Permission denied (publickey).'))?.title).toBe('Публикация ждёт доступа: main')
     expect(waitingNotice(waiting('ssh: Could not resolve hostname github.com'))).toBeNull()
     expect(waitingNotice(waiting())).toBeNull()
+  })
+})
+
+describe('schedule records', () => {
+  it('keeps every change when several arrive at once', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', '1\n', 'one')
+    const done = Array.from({ length: 8 }, (_, index): ScheduledPublish => ({
+      id: `done-${index}`, repo: dir, branch: 'main', remote: 'origin', at: future, dateMode: 'keep',
+      base: 'a', tip: 'b', commits: [], state: 'done'
+    }))
+    mkdirSync(join(dir, '.git', 'chronicle'), { recursive: true })
+    writeFileSync(join(dir, '.git', 'chronicle', 'schedules.json'), JSON.stringify(done))
+    await Promise.all(done.map((entry) => dismissSchedule(dir, entry.id)))
+    expect(await listSchedules(dir)).toEqual([])
   })
 })

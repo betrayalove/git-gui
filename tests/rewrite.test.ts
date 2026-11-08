@@ -6,7 +6,7 @@ import { git, gitLine } from '../src/core/git'
 import { commitDiff } from '../src/core/read'
 import { buildPatch } from '../src/shared/patch'
 import type { FileDiff, RewritePlan } from '../src/shared/types'
-import { applyRewrite, previewRewrite, purgeBackups, readJournal, redoEntry, signingSetup, undoEntry } from '../src/core/rewrite'
+import { applyRewrite, moveRefs, previewRewrite, purgeBackups, readJournal, redoEntry, signingSetup, undoEntry } from '../src/core/rewrite'
 import { addOrigin, commitFile, createRepo, head, log, mergeNoFf, resetClock, tempDir, write } from './helpers'
 
 beforeEach(resetClock)
@@ -834,5 +834,15 @@ describe('apply, undo and safety', () => {
     await applyRewrite(dir, { edits: { [await head(dir)]: { authorName: 'Лёва' } } })
     expect(await gitLine(dir, ['log', '-1', '--format=%an|%s'])).toBe('Лёва|Привет')
     expect(await git(dir, ['cat-file', 'commit', 'HEAD'])).not.toContain('encoding')
+  })
+})
+
+describe('journal', () => {
+  it('keeps every entry when several changes are recorded at once', async () => {
+    const dir = await createRepo()
+    const tip = await commitFile(dir, 'a.txt', '1\n', 'one')
+    const names = Array.from({ length: 8 }, (_, index) => `refs/heads/b${index}`)
+    await Promise.all(names.map((ref) => moveRefs(dir, [{ ref, before: null, after: tip }], ref)))
+    expect((await readJournal(dir)).map((entry) => entry.description).sort()).toEqual([...names].sort())
   })
 })

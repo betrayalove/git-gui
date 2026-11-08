@@ -5,6 +5,7 @@ import { classifyAccessError, issueSummary } from '../shared/access'
 import type { CommitEdit, ScheduledPublish } from '../shared/types'
 import { git, GitError, isAncestor, revParse, runGit } from './git'
 import { lsRemoteBranch, resolveBranchTarget } from './ops'
+import { exclusive } from './exclusive'
 import { commonDir, readCommits } from './read'
 import { moveRefs, replayOnto } from './rewrite'
 
@@ -29,13 +30,22 @@ async function saveSchedules(cwd: string, schedules: ScheduledPublish[]): Promis
   await rename(temporary, path)
 }
 
+/** Reads, changes and writes the list as one step, so that changes arriving together all survive. */
+async function changeSchedules<T>(cwd: string, change: (schedules: ScheduledPublish[]) => { schedules: ScheduledPublish[]; result: T }): Promise<T> {
+  return exclusive(await storePath(cwd), async () => {
+    const { schedules, result } = change(await listSchedules(cwd))
+    await saveSchedules(cwd, schedules)
+    return result
+  })
+}
+
 async function updateSchedule(cwd: string, id: string, patch: Partial<ScheduledPublish>): Promise<ScheduledPublish> {
-  const schedules = await listSchedules(cwd)
-  const entry = schedules.find((item) => item.id === id)
-  if (!entry) throw new Error('Публикация не найдена')
-  Object.assign(entry, patch)
-  await saveSchedules(cwd, schedules)
-  return entry
+  return changeSchedules(cwd, (schedules) => {
+    const entry = schedules.find((item) => item.id === id)
+    if (!entry) throw new Error('Публикация не найдена')
+    Object.assign(entry, patch)
+    return { schedules, result: entry }
+  })
 }
 
 function keeperRef(id: string): string {
@@ -112,7 +122,7 @@ export async function schedulePublish(cwd: string, request: ScheduleRequest): Pr
     commits: held.map((commit) => ({ sha: commit.sha, subject: commit.subject })),
     state: 'pending'
   }
-  await saveSchedules(cwd, [...(await listSchedules(cwd)), entry])
+  await changeSchedules(cwd, (schedules) => ({ schedules: [...schedules, entry], result: null }))
   return entry
 }
 
@@ -233,9 +243,9 @@ export async function cancelSchedule(cwd: string, id: string): Promise<Scheduled
 }
 
 export async function dismissSchedule(cwd: string, id: string): Promise<void> {
-  const schedules = await listSchedules(cwd)
-  const entry = schedules.find((item) => item.id === id)
-  if (entry?.state === 'pending') throw new Error('Сначала отмени публикацию')
-  await saveSchedules(cwd, schedules.filter((item) => item.id !== id))
+  await changeSchedules(cwd, (schedules) => {
+    if (schedules.find((item) => item.id === id)?.state === 'pending') throw new Error('Сначала отмени публикацию')
+    return { schedules: schedules.filter((item) => item.id !== id), result: null }
+  })
 }
 

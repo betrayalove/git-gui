@@ -16,6 +16,7 @@ import type {
   TodoItem
 } from '../shared/types'
 import { git, GitError, gitLine, isAncestor, revParse, runGit, spawnGit } from './git'
+import { exclusive } from './exclusive'
 import { commonDir, readCommits, readOperation, readRefs, readStatus } from './read'
 
 
@@ -952,12 +953,16 @@ export async function readJournal(cwd: string): Promise<JournalEntry[]> {
   }
 }
 
-async function writeJournal(cwd: string, entries: JournalEntry[]): Promise<void> {
+/** Reads, changes and writes the journal as one step, so that entries written together all survive. */
+async function changeJournal(cwd: string, change: (entries: JournalEntry[]) => JournalEntry[]): Promise<void> {
   const path = await journalPath(cwd)
-  await mkdir(dirname(path), { recursive: true })
-  const temporary = `${path}.${randomUUID()}.tmp`
-  await writeFile(temporary, JSON.stringify(entries.slice(-JOURNAL_LIMIT), null, 2))
-  await rename(temporary, path)
+  await exclusive(path, async () => {
+    const entries = change(await readJournal(cwd))
+    await mkdir(dirname(path), { recursive: true })
+    const temporary = `${path}.${randomUUID()}.tmp`
+    await writeFile(temporary, JSON.stringify(entries.slice(-JOURNAL_LIMIT), null, 2))
+    await rename(temporary, path)
+  })
 }
 
 interface RefMove {
@@ -1018,7 +1023,7 @@ export async function moveRefs(
     updates: moves.map((move) => ({ ref: move.ref, before: move.before, after: move.after })),
     state: 'applied'
   }
-  if (options.record !== false) await writeJournal(cwd, [...(await readJournal(cwd)), entry])
+  if (options.record !== false) await changeJournal(cwd, (entries) => [...entries, entry])
   return entry
 }
 
@@ -1055,7 +1060,7 @@ async function revertMoves(cwd: string, id: string, direction: 'undo' | 'redo'):
     throw error
   }
   entry.state = direction === 'undo' ? 'undone' : 'applied'
-  await writeJournal(cwd, journal)
+  await changeJournal(cwd, (entries) => entries.map((item) => (item.id === id ? { ...item, state: entry.state } : item)))
   return entry
 }
 
@@ -1095,7 +1100,7 @@ export async function purgeBackups(cwd: string): Promise<void> {
   const raw = await git(cwd, ['for-each-ref', '--format=%(refname)', 'refs/chronicle/backup'])
   const stdin = raw.split('\n').filter(Boolean).map((ref) => `delete ${ref}`).join('\n')
   if (stdin) await git(cwd, ['update-ref', '--stdin'], { input: `${stdin}\n` })
-  await writeJournal(cwd, [])
+  await changeJournal(cwd, () => [])
   await git(cwd, ['reflog', 'expire', '--expire=now', '--all'])
   await git(cwd, ['gc', '--prune=now', '--quiet'])
 }
