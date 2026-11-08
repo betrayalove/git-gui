@@ -194,7 +194,8 @@ describe('Chronicle', () => {
     await commitFile(repo, 'c.txt', 'два\n', 'Версия два')
     await commitFile(repo, 'c.txt', 'три\n', 'Версия три')
     await git(repo, ['push', '-q', 'origin', 'main'])
-    await row('Версия три').waitFor()
+    // The list refreshes once it notices the push. A refresh in the middle of a drag loses the drop.
+    await row('Версия три').locator('[title="refs/remotes/origin/main"]').waitFor()
     await row('Версия три').dragTo(row('Версия два'), { targetPosition: { x: 400, y: 33 } })
     await page.locator('.state-moved').first().waitFor()
     await page.getByRole('button', { name: 'Предпросмотр и применение' }).click()
