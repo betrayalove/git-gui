@@ -67,7 +67,8 @@ export async function listSubmodules(cwd: string): Promise<Submodule[]> {
   for (const entry of byName.values()) if (entry.path && entry.url) urls.set(entry.path, entry.url)
   const raw = await git(root, ['submodule', 'status', '--recursive'])
   return raw.split('\n').filter(Boolean).map((line) => {
-    const match = /^(.)([0-9a-f]+) (\S+)(?: \((.*)\))?$/.exec(line)
+    // The path may hold spaces. Git adds the description in brackets only for a downloaded submodule.
+    const match = /^(.)([0-9a-f]+) (.+?)(?: \((.*)\))?$/.exec(line)
     if (!match) throw new Error(`Не удалось разобрать состояние submodule: ${line}`)
     return { path: match[3], sha: match[2], state: SUBMODULE_STATE[match[1]] ?? 'ok', url: urls.get(match[3]) ?? null, describe: match[4] ?? null }
   })

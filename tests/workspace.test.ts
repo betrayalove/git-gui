@@ -83,6 +83,18 @@ describe('submodules', () => {
     await commitFile(join(clone, 'vendor/lib'), 'lib.txt', 'newer\n', 'newer library')
     expect((await listSubmodules(clone)).map((item) => item.state)).toEqual(['changed'])
   })
+  it('reads a submodule whose path has spaces', async () => {
+    const library = await createRepo()
+    const libSha = await commitFile(library, 'lib.txt', 'lib\n', 'library')
+    const app = await createRepo()
+    await commitFile(app, 'app.txt', 'app\n', 'app')
+    await git(app, ['submodule', 'add', '-q', library, 'vendor/my lib'])
+    await git(app, ['commit', '-q', '-m', 'add library'])
+    expect(await listSubmodules(app)).toEqual([{ path: 'vendor/my lib', sha: libSha, state: 'ok', url: library, describe: expect.any(String) }])
+    const clone = tempDir()
+    await git(clone, ['clone', '-q', app, '.'])
+    expect(await listSubmodules(clone)).toEqual([{ path: 'vendor/my lib', sha: libSha, state: 'missing', url: library, describe: null }])
+  })
 })
 
 const hasLfs = (() => {
