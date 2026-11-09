@@ -107,6 +107,14 @@ export interface DependencyReport {
   skipped: { path: string; reason: string }[]
 }
 
+export function advisoryKey(ecosystem: Ecosystem, name: string, version: string): string {
+  return `${ecosystem}:${name}@${version}`
+}
+
+export function statusKey(ecosystem: Ecosystem, name: string): string {
+  return `${ecosystem}:${name}`
+}
+
 /** A change to one lockfile that the app can make on a branch of its own. */
 export interface DependencyFix {
   lockfile: string

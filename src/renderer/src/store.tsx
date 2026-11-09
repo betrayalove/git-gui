@@ -23,7 +23,7 @@ interface AccessRequest {
 /** git stopped halfway and left files with conflicts for the person to resolve. */
 const LEFT_CONFLICTS = /CONFLICT \(|Automatic merge failed|could not apply|Resolve all conflicts|after resolving the conflicts/
 
-export type View = 'history' | 'changes' | 'files' | 'stash' | 'schedule' | 'journal'
+export type View = 'history' | 'changes' | 'files' | 'stash' | 'schedule' | 'dependencies' | 'journal'
 
 interface Toast {
   id: number

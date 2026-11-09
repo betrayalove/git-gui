@@ -32,6 +32,8 @@ const paths: Record<string, ReactNode> = {
   external: <><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 14v6H4V6h6" /></>,
   file: <><path d="M6 3.5h8l4 4v13H6z" /><path d="M14 3.5v4h4" /></>,
   key: <><circle cx="8" cy="15.5" r="4.5" /><path d="M11.2 12.3L20 3.5M16 7.5l3 3M13.5 10l2 2" /></>,
+  shield: <path d="M12 3.5l7 2.5v5.5c0 4.3-3 7.7-7 9-4-1.3-7-4.7-7-9V6z" />,
+  package: <><path d="M4 7.5l8-4 8 4v9l-8 4-8-4z" /><path d="M4 7.5l8 4 8-4M12 11.5v9" /></>,
   users: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.5-4 3-6 6.5-6s6 2 6.5 6M16 4.8a3.5 3.5 0 0 1 0 6.4M18.5 14.5c1.8.9 2.8 2.7 3 5.5" /></>
 }
 

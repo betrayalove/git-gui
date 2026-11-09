@@ -477,6 +477,19 @@ h1, h2, h3, h4, p { margin: 0; }
 .schedule-when b { font-weight: 600; }
 .schedule-when .muted { font-size: 11.5px; }
 .schedule-card.state-failed .schedule-when > svg { color: var(--del); }
+.dep-group { margin-top: 6px; }
+.schedule-when b .mono { font-family: var(--mono); font-size: 11.5px; font-weight: 400; }
+.dep-group > h3 { display: flex; align-items: center; gap: 7px; margin: 10px 14px 2px; font-size: 13px; font-weight: 600; }
+.dep-group > p { margin: 0 14px 9px; font-size: 12px; }
+.dep-banner { margin: 0 14px 10px; }
+.dep-advisories { margin: 9px 0 0 29px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; }
+.dep-advisories li { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; color: var(--text-2); }
+.schedule-card .dep-advisories + .detail-actions, .schedule-card .schedule-when + .detail-actions { padding-left: 29px; }
+.pill.severity-critical, .pill.severity-high { background: var(--del-soft); color: var(--del); }
+.pill.severity-moderate { background: var(--draft-soft); color: var(--draft); }
+.schedule-when > svg.tone-danger { color: var(--del); }
+.schedule-when > svg.tone-warn { color: var(--draft); }
+.schedule-when > svg.tone-ok { color: var(--add); }
 .schedule-commits { margin: 9px 0 0 29px; padding: 0; list-style: none; color: var(--text-2); font-size: 12.5px; }
 
 /* Overlays */

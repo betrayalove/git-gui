@@ -1,3 +1,7 @@
+import { join } from 'node:path'
+import { app } from 'electron'
+import * as dependencies from '../core/dependencies'
+import * as depsFix from '../core/deps-fix'
 import * as forge from '../core/forge'
 import * as ops from '../core/ops'
 import * as read from '../core/read'
@@ -8,7 +12,15 @@ import * as workspace from '../core/workspace'
 import { withoutPrompts } from '../core/git'
 import type { AccessPrompt, PromptReply, SshTarget } from '../shared/access'
 import type { Language } from '../shared/i18n'
+import type { DependencyFix, DependencyReport } from '../shared/deps'
 import type { ForgeContext, Theme, UpdateInfo, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
+
+const dependencyCache = (): string => join(app.getPath('userData'), 'dependencies')
+// Tests answer for all three public databases from one local server.
+const dependencySources = (): dependencies.Sources | undefined => {
+  const server = process.env.CHRONICLE_DEPS_SERVER
+  return server ? { osv: server, depsDev: server, endOfLife: server } : undefined
+}
 
 export interface RepoSnapshot {
   status: RepoStatus
@@ -103,6 +115,12 @@ export const api = {
   /** Whether the server would answer with nobody at the computer, as during a timed publish. */
   checkUnattended: (repo: string, remote: string) => withoutPrompts(() => ssh.checkRemote(repo, remote)),
 
+  checkDependencies: (repo: string, rev?: string): Promise<DependencyReport> =>
+    dependencies.checkDependencies(repo, { rev, cacheDir: dependencyCache(), sources: dependencySources() }),
+  lastDependencyReport: (repo: string): Promise<DependencyReport | null> => dependencies.lastDependencyReport(repo, dependencyCache()),
+  fixCommands: async (_repo: string, fix: DependencyFix): Promise<string[][]> => depsFix.fixCommands(fix),
+  fixDependencies: depsFix.fixDependencies,
+
   previewRewrite: rewrite.previewRewrite,
   applyRewrite: rewrite.applyRewrite,
   undoEntry: rewrite.undoEntry,
@@ -157,6 +175,9 @@ export interface AppApi {
   checkForUpdates(): Promise<UpdateInfo>
   updateChecksEnabled(): Promise<boolean>
   setUpdateChecksEnabled(enabled: boolean): Promise<void>
+  /** Whether the person agreed to send package names and versions to public databases. */
+  dependencyConsent(): Promise<boolean>
+  setDependencyConsent(agreed: boolean): Promise<void>
 }
 
 export interface ChronicleBridge {

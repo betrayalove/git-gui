@@ -61,9 +61,9 @@ afterEach(async () => {
 const temporaryWorktrees = (): string[] => readdirSync(tmpdir()).filter((name) => name.startsWith('chronicle-deps-'))
 
 /** A repository on `main` with a manifest and the lockfile the package manager wrote for it. */
-async function project(manager: 'npm' | 'pnpm', manifest: object): Promise<string> {
+async function project(manager: 'npm' | 'pnpm', manifest: object, indent = 2): Promise<string> {
   const repo = await createRepo()
-  write(repo, 'package.json', `${JSON.stringify(manifest, null, 2)}\n`)
+  write(repo, 'package.json', `${JSON.stringify(manifest, null, indent)}\n`)
   await runPackageManager(repo, manager === 'npm'
     ? ['npm', 'install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund']
     : ['pnpm', 'install', '--lockfile-only', '--ignore-scripts'])
@@ -191,6 +191,17 @@ describe('fixDependencies with npm', () => {
     const manifest = JSON.parse(await git(repo, ['show', `${result.branch}:package.json`])) as { overrides: Record<string, string> }
     expect(manifest.overrides).toEqual({ 'leaf@1.0.0': '^1.0.1' })
     expect(await versions(repo, result.branch, 'package-lock.json', 'leaf')).toEqual(['1.0.1', '2.0.0'])
+  })
+
+  it('keeps a manifest written on one line on one line', async () => {
+    registry.publish('leaf', '1.0.0').publish('mid', '1.0.0', { leaf: '1.0.0' })
+    const repo = await project('npm', { name: 'app', version: '1.0.0', dependencies: { mid: '1.0.0' } }, 0)
+    registry.publish('leaf', '1.0.1')
+
+    const result = await fixAndCheck(repo, { lockfile: 'package-lock.json', manager: 'npm', updates: [{ name: 'leaf', from: '1.0.0', to: '1.0.1', direct: false }] })
+    const manifest = await git(repo, ['show', `${result.branch}:package.json`])
+    expect(manifest.trim().split('\n')).toHaveLength(1)
+    expect(JSON.parse(manifest)).toMatchObject({ overrides: { 'leaf@1.0.0': '^1.0.1' } })
   })
 
   it('makes no branch when the package manager cannot move the old version', async () => {

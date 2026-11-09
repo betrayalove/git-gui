@@ -58,6 +58,7 @@ export function Sidebar(): ReactNode {
     { id: 'files', label: t('Файлы'), icon: 'file' },
     { id: 'stash', label: 'Stash', icon: 'stash', count: snapshot?.stashes.length },
     { id: 'schedule', label: t('Публикации'), icon: 'schedule', count: pending },
+    { id: 'dependencies', label: t('Зависимости'), icon: 'shield' },
     { id: 'journal', label: t('Журнал'), icon: 'journal' }
   ]
 

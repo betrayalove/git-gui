@@ -299,8 +299,8 @@ const NPM_FORMATS: LockfileFormat[] = [
 
 export const FORMATS: LockfileFormat[] = [...NPM_FORMATS, ...MORE_FORMATS]
 
-/** Folders whose lockfiles belong to someone else's code that happens to be checked in. */
-const FOREIGN = /(^|\/)(node_modules|vendor|third_party)\//
+/** Folders whose lockfiles belong to someone else's code, or are test data rather than the project's own. */
+const FOREIGN = /(^|\/)(node_modules|vendor|third_party|fixtures?|__fixtures__|testdata)\//
 
 async function readText(cwd: string, rev: string, path: string): Promise<string | null> {
   const { stdout, code } = await runGit(cwd, ['cat-file', 'blob', `${rev}:${path}`], { okCodes: [128] })

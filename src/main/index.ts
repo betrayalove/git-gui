@@ -49,6 +49,7 @@ let recent: string[] = []
 const HIDDEN_FLAG = '--chronicle-hidden'
 let startedHidden = false
 let updateChecks = true
+let dependencyConsent = false
 /** Null until the person picks one: until then the language follows the system. */
 let chosenLanguage: Language | null = null
 let theme: Theme = 'system'
@@ -62,10 +63,11 @@ let broker: PromptBroker
 async function loadState(): Promise<void> {
   try {
     const state = JSON.parse(await readFile(statePath(), 'utf8')) as {
-      recent?: string[]; known?: string[]; updateChecks?: boolean; language?: unknown; theme?: unknown
+      recent?: string[]; known?: string[]; updateChecks?: boolean; dependencyConsent?: boolean; language?: unknown; theme?: unknown
     }
     recent = state.recent ?? []
     updateChecks = state.updateChecks ?? true
+    dependencyConsent = state.dependencyConsent ?? false
     chosenLanguage = isLanguage(state.language) ? state.language : null
     theme = isTheme(state.theme) ? state.theme : 'system'
     for (const repo of state.known ?? []) openRepos.add(repo)
@@ -80,7 +82,7 @@ async function loadState(): Promise<void> {
 async function saveState(): Promise<void> {
   await mkdir(app.getPath('userData'), { recursive: true })
   // `known` outlives the recent list, so a pending publish still runs after its repository scrolls off.
-  await writeFile(statePath(), JSON.stringify({ recent, known: [...openRepos], updateChecks, language: chosenLanguage ?? undefined, theme }, null, 2))
+  await writeFile(statePath(), JSON.stringify({ recent, known: [...openRepos], updateChecks, dependencyConsent, language: chosenLanguage ?? undefined, theme }, null, 2))
 }
 
 async function rememberRepo(path: string): Promise<string> {
@@ -303,6 +305,11 @@ const appHandlers: AppApi = {
   updateChecksEnabled: async () => updateChecks && app.isPackaged,
   setUpdateChecksEnabled: async (enabled) => {
     updateChecks = enabled
+    await saveState()
+  },
+  dependencyConsent: async () => dependencyConsent,
+  setDependencyConsent: async (agreed) => {
+    dependencyConsent = agreed
     await saveState()
   },
   autostart: async () => ({

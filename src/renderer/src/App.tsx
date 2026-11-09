@@ -11,6 +11,7 @@ import { Icon } from './components/ui'
 import { plural } from './format'
 import { RepoProvider, useRepo } from './store'
 import { ChangesView } from './views/ChangesView'
+import { DependenciesView } from './views/DependenciesView'
 import { FilesView } from './views/FilesView'
 import { HistoryView } from './views/HistoryView'
 import { Inspector } from './views/Inspector'
@@ -152,6 +153,7 @@ function Workspace(): ReactNode {
           {view === 'files' && <FilesView />}
           {view === 'stash' && <StashView />}
           {view === 'schedule' && <ScheduleView />}
+          {view === 'dependencies' && <DependenciesView />}
           {view === 'journal' && <JournalView />}
           <DraftBar />
         </main>

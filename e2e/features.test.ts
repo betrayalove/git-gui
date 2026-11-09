@@ -182,7 +182,7 @@ describe('History tools', () => {
       const at = text.search(/[А-Яа-яЁё]/)
       return at === -1 ? null : text.slice(Math.max(0, at - 30), at + 40)
     })
-    for (const view of ['History', 'Changes', 'Files', 'Stash', 'Publishing', 'Journal']) {
+    for (const view of ['History', 'Changes', 'Files', 'Stash', 'Publishing', 'Dependencies', 'Journal']) {
       await page.locator('.side-nav button', { hasText: view }).click()
       await expect.poll(russianLeft).toBeNull()
     }

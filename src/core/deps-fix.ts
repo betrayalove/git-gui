@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, posix } from 'node:path'
-import { packageKey, type DependencyFix, type FixResult, type LockedPackage, type PackageManager } from '../shared/deps'
+import { packageKey, type DependencyFix, type Ecosystem, type FixResult, type LockedPackage, type PackageManager } from '../shared/deps'
 import { t } from '../shared/i18n'
+import { compareVersions } from '../shared/versions'
 import { childEnv, git, gitLine, revParse, runGit } from './git'
 import { parseLockfile } from './lockfiles'
 import { moveRefs } from './rewrite'
@@ -223,8 +224,10 @@ function replaceSpan(text: string, node: JsonNode, value: string): string {
 
 /** Sets a string at a path of object keys, adding the objects that are missing, in the file's own indentation. */
 function setJsonString(text: string, path: string[], value: string): string {
-  const unit = /^([ \t]+)"/m.exec(text)?.[1] ?? '  '
-  const eol = text.includes('\r\n') ? '\r\n' : '\n'
+  // A manifest written on one line stays on one line.
+  const compact = !text.trim().includes('\n')
+  const unit = compact ? '' : /^([ \t]+)"/m.exec(text)?.[1] ?? '  '
+  const eol = compact ? '' : text.includes('\r\n') ? '\r\n' : '\n'
   const render = (keys: string[], depth: number): string => keys.length
     ? `{${eol}${unit.repeat(depth + 1)}${JSON.stringify(keys[0])}: ${render(keys.slice(1), depth + 1)}${eol}${unit.repeat(depth)}}`
     : JSON.stringify(value)
@@ -405,17 +408,14 @@ function versionsByName(packages: LockedPackage[], normalize: (name: string) => 
   return result
 }
 
-function compareVersions(a: string, b: string): number {
-  return a.localeCompare(b, 'en', { numeric: true })
-}
-
-function changedPackages(before: LockedPackage[], after: LockedPackage[], normalize: (name: string) => string): FixResult['changed'] {
+function changedPackages(before: LockedPackage[], after: LockedPackage[], normalize: (name: string) => string, ecosystem: Ecosystem): FixResult['changed'] {
+  const byVersion = (a: string, b: string): number => compareVersions(ecosystem, a, b)
   const old = versionsByName(before, normalize)
   const now = versionsByName(after, normalize)
   const changed: FixResult['changed'] = []
   for (const name of [...new Set([...old.keys(), ...now.keys()])].sort()) {
-    const removed = [...old.get(name) ?? []].filter((version) => !now.get(name)?.has(version)).sort(compareVersions)
-    const added = [...now.get(name) ?? []].filter((version) => !old.get(name)?.has(version)).sort(compareVersions)
+    const removed = [...old.get(name) ?? []].filter((version) => !now.get(name)?.has(version)).sort(byVersion)
+    const added = [...now.get(name) ?? []].filter((version) => !old.get(name)?.has(version)).sort(byVersion)
     for (let index = 0; index < Math.max(removed.length, added.length); index++) {
       changed.push({ name, from: removed[index] ?? null, to: added[index] ?? null })
     }
@@ -546,7 +546,7 @@ export async function fixDependencies(cwd: string, fix: DependencyFix, options: 
 
     const after = await read()
     const missed = stillThere(after, pending, normalize)
-    const changed = changedPackages(before, after, normalize)
+    const changed = changedPackages(before, after, normalize, fix.manager === 'pip' ? 'PyPI' : 'npm')
     const status = await git(worktree, ['status', '--porcelain', '--', ...touched])
     if (!status.trim() || missed.length === pending.length) {
       const names = missed.map((update) => packageKey(update.name, update.from)).join(', ')

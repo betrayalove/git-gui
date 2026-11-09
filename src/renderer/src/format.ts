@@ -21,6 +21,10 @@ export function formatRelative(iso: string, now: number = Date.now()): string {
   return shortDate.format(new Date(iso))
 }
 
+export function formatDay(iso: string): string {
+  return shortDate.format(new Date(iso))
+}
+
 export function formatFull(iso: string): string {
   return fullDate.format(new Date(iso))
 }
