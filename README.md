@@ -62,6 +62,15 @@ Take the latest commits off a branch, locally and on the server, and publish the
 - **Submodules** with their state, and **Git LFS** files with download and tracking.
 - Commit, push and fetch, staging of individual hunks, stashes, branches and tags, cherry-pick, revert and reset.
 
+### Check dependencies
+
+Chronicle reads the lockfiles of the latest commit and checks every package against the public databases [OSV.dev](https://osv.dev), [deps.dev](https://deps.dev) and [endoflife.date](https://endoflife.date). Only names and versions of public packages are sent, and only after you agree once.
+
+- **12 lockfile formats in 6 ecosystems:** npm, pnpm and Yarn; Cargo; Go modules; Poetry, uv, Pipenv and `requirements.txt`; Bundler; Composer.
+- **Advice by urgency.** Vulnerabilities in code that ships come first, development tools next, then updates that may break your code and updates that should not. Each package shows how the project gets it and the lowest version without the flaw. A malicious package is always at the top.
+- **Platform support:** when the version of Electron, React, Vue, Angular, Next.js, Nuxt, Django, Flask, Rails, Laravel or Symfony you use stops being supported.
+- **Update on a new branch.** For npm, pnpm, Yarn 2+ and `requirements.txt`, Chronicle makes the change in a separate copy of the repository with install scripts off. It raises a direct dependency, or adds an override for one that another package pins. The result is an ordinary commit on its own branch, and your working folder stays as it is.
+
 ### No account needed
 
 Chronicle works through your system Git and the SSH keys on your computer. Local work needs nothing at all. When a server refuses the connection, a helper takes over:
