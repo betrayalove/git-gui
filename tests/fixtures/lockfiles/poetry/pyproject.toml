@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "sample"
+version = "0.1.0"
+description = ""
+authors = ["Mira <mira@example.com>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.9"
+Jinja2 = "2.11.2"
+urllib3 = "1.26.4"
+helper = { path = "../helper", develop = true }
+six = { git = "https://github.com/benjaminp/six.git", tag = "1.16.0" }
+
+[tool.poetry.group.dev.dependencies]
+iniconfig = "2.0.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

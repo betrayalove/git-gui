@@ -1,0 +1,16 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+Jinja2 = "==2.11.2"
+urllib3 = "==1.26.4"
+helper = {editable = true, path = "../helper"}
+six = {git = "https://github.com/benjaminp/six.git", ref = "1.16.0"}
+
+[dev-packages]
+iniconfig = "==2.0.0"
+
+[requires]
+python_version = "3.12"

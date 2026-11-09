@@ -1,0 +1,43 @@
+GIT
+  remote: https://github.com/rack/rack-contrib.git
+  revision: 544e25819abd0d7a7d342d4eb6255017ab2625c7
+  tag: v2.3.0
+  specs:
+    rack-contrib (0.0.0.1.ENOGVB)
+      rack (~> 2.0)
+
+PATH
+  remote: vendor/helper
+  specs:
+    helper (0.1.0)
+      rack (>= 2)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    mini_portile2 (2.7.1)
+    nokogiri (1.13.0)
+      mini_portile2 (~> 2.7.0)
+      racc (~> 1.4)
+    nokogiri (1.13.0-arm64-darwin)
+      racc (~> 1.4)
+    nokogiri (1.13.0-x86_64-linux)
+      racc (~> 1.4)
+    racc (1.8.1)
+    rack (2.2.3)
+    rake (13.0.6)
+
+PLATFORMS
+  arm64-darwin
+  ruby
+  x86_64-linux
+
+DEPENDENCIES
+  helper!
+  nokogiri (= 1.13.0)
+  rack (= 2.2.3)
+  rack-contrib!
+  rake (= 13.0.6)
+
+BUNDLED WITH
+   1.17.2

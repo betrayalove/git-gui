@@ -797,5 +797,7 @@ export const EN: Record<string, string> = {
   // Dependencies
   'Старый формат package-lock.json. Обнови его командой npm install.': 'Old package-lock.json format. Update it with npm install.',
   'Старый формат pnpm-lock.yaml. Обнови его командой pnpm install.': 'Old pnpm-lock.yaml format. Update it with pnpm install.',
-  'Неизвестный формат: {path}': 'Unknown format: {path}'
+  'Неизвестный формат: {path}': 'Unknown format: {path}',
+  'Строка {line} в {file} не читается.': 'Line {line} of {file} cannot be read.',
+  'Файл {file} устроен не так, как ожидалось.': '{file} is not laid out as expected.'
 }
