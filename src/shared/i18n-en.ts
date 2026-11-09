@@ -792,5 +792,10 @@ export const EN: Record<string, string> = {
   'Сервер {server} недоступен. Проверь интернет: ключи здесь ни при чём.': 'Server {server} is unreachable. Check the internet connection: keys have nothing to do with it.',
   'Сервер отклонил отправку: ветка защищена.': 'The server refused the push: the branch is protected.',
   'правка коммитов: {value}': 'commit edits: {value}',
-  'перестройка ветки {branch}': 'rebuilding branch {branch}'
+  'перестройка ветки {branch}': 'rebuilding branch {branch}',
+
+  // Dependencies
+  'Старый формат package-lock.json. Обнови его командой npm install.': 'Old package-lock.json format. Update it with npm install.',
+  'Старый формат pnpm-lock.yaml. Обнови его командой pnpm install.': 'Old pnpm-lock.yaml format. Update it with pnpm install.',
+  'Неизвестный формат: {path}': 'Unknown format: {path}'
 }

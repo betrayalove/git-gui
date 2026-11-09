@@ -1,0 +1,60 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@sindresorhus/is':
+        specifier: 0.14.0
+        version: 0.14.0
+      debug:
+        specifier: 2.6.8
+        version: 2.6.8
+      lodash:
+        specifier: ^4.17.15
+        version: 4.18.1
+    devDependencies:
+      minimist:
+        specifier: 1.2.0
+        version: 1.2.0
+
+packages:
+
+  '@sindresorhus/is@0.14.0':
+    resolution: {integrity: sha512-9NET910DNaIPngYnLLPeg+Ogzqsi9uM4mSboU5y6p8S5DzMTVEsJZrawi+BoDNUVBa2DhJqQYUFvMDfgU062LQ==}
+    engines: {node: '>=6'}
+
+  debug@2.6.8:
+    resolution: {integrity: sha512-E22fsyWPt/lr4/UgQLt/pXqerGMDsanhbnmqIS3VAXuDi1v3IpiwXe2oncEIondHSBuPDWRoK/pMjlvi8FuOXQ==}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
+
+  lodash@4.18.1:
+    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
+
+  minimist@1.2.0:
+    resolution: {integrity: sha512-7Wl+Jz+IGWuSdgsQEJ4JunV0si/iMhg42MnQQG6h1R6TNeVenp4U9x5CC5v/gYqz/fENLQITAWXidNtVL0NNbw==}
+
+  ms@2.0.0:
+    resolution: {integrity: sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A==}
+
+snapshots:
+
+  '@sindresorhus/is@0.14.0': {}
+
+  debug@2.6.8:
+    dependencies:
+      ms: 2.0.0
+
+  lodash@4.18.1: {}
+
+  minimist@1.2.0: {}
+
+  ms@2.0.0: {}
