@@ -88,8 +88,14 @@ export function SigningDialog(): ReactNode {
       if (current.choice === 'ssh' || current.choice === 'openpgp') setKey(current.key)
     })
     void appApi.sshListKeys().then(setSshKeys).catch(() => setSshKeys([]))
-    void client.listGpgKeys().then(setGpgKeys).catch(() => setGpgKeys([]))
   }, [client])
+
+  // Asking GnuPG for keys starts its background daemons, so that waits until GPG is chosen.
+  const wantsGpg = mode === 'openpgp'
+  useEffect(() => {
+    if (!wantsGpg) return
+    void client.listGpgKeys().then(setGpgKeys).catch(() => setGpgKeys([]))
+  }, [client, wantsGpg])
 
   const save = (): void => {
     const choice: SigningChoice = mode === 'ssh' || mode === 'openpgp' ? { mode, key } : { mode }
