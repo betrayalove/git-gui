@@ -38,6 +38,7 @@ async function launch(name: string, prepare?: (home: string) => void, knownHost 
   const repo = join(dir, 'project')
   mkdirSync(home, { recursive: true })
   mkdirSync(userData)
+  mkdirSync(join(dir, 'gnupg'))
   prepare?.(home)
   const clientDir = join(dir, 'client')
   mkdirSync(clientDir)
@@ -67,7 +68,9 @@ async function launch(name: string, prepare?: (home: string) => void, knownHost 
       CHRONICLE_SSH_HOME: home,
       CHRONICLE_SSH_CONFIG: config,
       GIT_CONFIG_GLOBAL: globalConfig,
-      GIT_CONFIG_NOSYSTEM: '1'
+      GIT_CONFIG_NOSYSTEM: '1',
+      // The signing dialog lists GPG keys; this keeps the real keyring out of reach.
+      GNUPGHOME: join(dir, 'gnupg')
     }
   })
   // Tests must not open the real browser or change the real clipboard.
@@ -325,7 +328,16 @@ describe.skipIf(!server)('Connecting without an account', () => {
     let run: Launched
 
     beforeAll(async () => { run = await launch('signing', (home) => { makeKey(home, 'id_ed25519', passphrase, 'mira@laptop') }) })
-    afterAll(async () => { await run?.app.close() })
+    afterAll(async () => {
+      // Listing GPG keys starts GnuPG's daemons. On Windows they inherit the app's output pipes and
+      // outlive it, so closing would wait for them forever.
+      try {
+        execFileSync('gpgconf', ['--kill', 'all'], { env: { ...process.env, GNUPGHOME: join(run.repo, '..', 'gnupg') }, stdio: 'ignore' })
+      } catch {
+        // Without GnuPG nothing was started.
+      }
+      await run?.app.close()
+    })
 
     it('signs for this repository only and asks for the key password through the app', async () => {
       await run.page.keyboard.press('ControlOrMeta+2')
