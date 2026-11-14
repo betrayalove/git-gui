@@ -124,11 +124,13 @@ export function SigningDialog(): ReactNode {
         <button className="btn btn-primary" disabled={!state || (needsKey && !key)} onClick={save}>{t('Сохранить')}</button>
       </>}
     >
-      <div className="segmented compact signing-modes" role="group" aria-label={t('Подпись коммитов')}>
+      {/* The choice appears with the current setting, so a click made earlier cannot be undone by it arriving. */}
+      {!state && <p className="hint">{t('Читаю настройки…')}</p>}
+      {state && <div className="segmented compact signing-modes" role="group" aria-label={t('Подпись коммитов')}>
         {options.map(([value, label]) => (
           <button key={value} className={mode === value ? 'active' : ''} aria-pressed={mode === value} onClick={() => { setMode(value); setKey(value === state?.choice ? state.key : '') }}>{label}</button>
         ))}
-      </div>
+      </div>}
       {mode === 'inherit' && state && (
         <p className="hint">{t('Сейчас по общим настройкам:')} {signingSummary(state.inherited).toLowerCase()}.</p>
       )}

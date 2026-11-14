@@ -1021,5 +1021,6 @@ export const EN: Record<string, string> = {
   'Обновить': 'Refresh',
   'Загружаю список…': 'Loading the list…',
   'Открытых {label} нет': 'No open {label}s',
-  'Токен для {host} будет удалён с этого компьютера. На сайте он продолжит работать, пока его там не отзовут.': 'The token for {host} is removed from this computer. On the site it keeps working until it is revoked there.'
+  'Токен для {host} будет удалён с этого компьютера. На сайте он продолжит работать, пока его там не отзовут.': 'The token for {host} is removed from this computer. On the site it keeps working until it is revoked there.',
+  'Читаю настройки…': 'Reading the settings…'
 }
