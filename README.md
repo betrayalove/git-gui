@@ -57,15 +57,27 @@ Take the latest commits off a branch, locally and on the server, and publish the
 
 ### Everyday Git
 
+- **Diffs like in a good editor:** unified or split, with syntax highlighting, an option to hide whitespace-only changes, and before-and-after views of images.
+- **Stage by line.** Stage and discard whole files, single hunks, or just the lines you pick.
 - **Merge and pull with foresight.** Before merging, Chronicle lists the files that will conflict. Pull offers rebase or merge, and with rebase every conflict is resolved in the preview, before anything changes. Conflicts that do happen open in a built-in editor.
+- **.gitignore with a right-click** on a new file: ignore the file, its folder or every file with its extension.
+- **Commit signing** with an SSH or GPG key for one repository, without touching global git settings. The app asks for an SSH key passphrase itself, and the inspector shows whether a commit is signed and whether the signature holds.
 - **Worktrees:** open another branch in its own folder and switch between them in one click.
 - **Submodules** with their state, and **Git LFS** files with download and tracking.
-- **Tabs:** several repositories in one window, each with its own draft and view. **Background fetch** every few minutes keeps the counts on Pull and Push current and never asks for a password.
-- **Commit signing** with an SSH or GPG key for one repository, without touching global git settings. The app asks for an SSH key passphrase itself. The inspector shows whether a commit is signed and whether the signature holds.
-- **Command palette** on ⌘K or Ctrl+K, and shortcuts: views on ⌘1–⌘7, history search ⌘F, settings ⌘,, new tab ⌘T, switching tabs with Ctrl+Tab. Windows and Linux use Ctrl in place of ⌘.
-- **.gitignore without editing it by hand:** right-click a new file in Changes to ignore the file, its folder or every file with its extension.
-- **Unified or split diffs** with syntax highlighting, an option to hide whitespace-only changes, and before-and-after views of images.
-- Commit, push and fetch, staging and discarding of individual hunks and lines, stashes, branches and tags, cherry-pick, revert and reset.
+- Commit, push and fetch, stashes, branches and tags, cherry-pick, revert and reset.
+
+### Pull and merge requests
+
+With a GitHub or GitLab token in the settings, open requests show up right in the app along with the state of their CI checks. Switch to the branch of any request, forks included, or create a new one; if the server lacks the branch, Chronicle pushes it first. It works with github.com, GitHub Enterprise, gitlab.com and self-hosted GitLab.
+
+The token is checked with the server before it is saved, kept encrypted in the system password store, and only ever sent to its own server. Without a token, requests open on the site with the branch already selected.
+
+### Work fast
+
+- **Tabs:** several repositories in one window, each with its own draft and view.
+- **Command palette** on ⌘K: find a view, an action, a branch or a tab by a few letters.
+- **Shortcuts:** views on ⌘1–⌘8, history search ⌘F, settings ⌘,, new tab ⌘T, switching tabs with Ctrl+Tab. Windows and Linux use Ctrl in place of ⌘.
+- **Background fetch** every 10 minutes, adjustable in the settings. The counts on Pull and Push stay current, and a background fetch never asks for a key password.
 
 ### Check dependencies
 
@@ -84,13 +96,17 @@ Chronicle works through your system Git and the SSH keys on your computer. Local
 2. It asks for the key's password if the key has one.
 3. If no key fits, it creates one and walks you through adding it on GitHub or GitLab.
 
-Without a token, pull and merge requests open on the site with the branch already selected. With a GitHub or GitLab token in the settings they live right in the app: the open ones with the state of their CI checks, switching to a request's branch, forks included, and creating a new one, pushing the branch first. The token is kept encrypted in the system password store and only ever sent to its own server, while git still works through SSH keys.
+Pushing and fetching always go through git and SSH keys. The token in the settings is only for listing and creating pull and merge requests.
 
 ## Screenshots
 
 | Preview before applying | Publish on a timer |
 | --- | --- |
 | ![Preview of a rewrite](docs/images/preview.png) | ![Scheduling a publish](docs/images/schedule.png) |
+
+| Split diff | Pull requests in the app |
+| --- | --- |
+| ![A split diff with syntax highlighting and a chosen line](docs/images/changes.png) | ![Open pull requests with the state of their checks](docs/images/requests.png) |
 
 | Connecting with an SSH key |
 | --- |
