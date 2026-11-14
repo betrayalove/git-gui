@@ -123,7 +123,8 @@ describe('GPG keys', () => {
     expect(hasGpg).toBe(true)
   })
 
-  it.runIf(hasGpg)('signs with a GPG key and verifies it', async () => {
+  // Creating a test key fails with the gpg that Git for Windows puts on PATH, so Windows is left out.
+  it.runIf(hasGpg && process.platform !== 'win32')('signs with a GPG key and verifies it', async () => {
     process.env.GNUPGHOME = tempDir()
     execFileSync('gpg', ['--batch', '--passphrase', '', '--quick-gen-key', 'Test <test@example.com>', 'ed25519', 'sign', 'never'], { stdio: 'ignore' })
     const dir = await repo()
