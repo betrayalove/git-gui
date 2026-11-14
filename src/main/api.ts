@@ -3,6 +3,7 @@ import { app } from 'electron'
 import * as dependencies from '../core/dependencies'
 import * as depsFix from '../core/deps-fix'
 import * as forge from '../core/forge'
+import * as forgeApi from '../core/forge-api'
 import * as ops from '../core/ops'
 import * as read from '../core/read'
 import * as rewrite from '../core/rewrite'
@@ -11,16 +12,27 @@ import * as signing from '../core/signing'
 import * as ssh from '../core/ssh'
 import * as workspace from '../core/workspace'
 import { withoutPrompts } from '../core/git'
+import { forgeTokens } from './forge-tokens'
+import { t } from '../shared/i18n'
 import type { AccessPrompt, PromptReply, SshTarget } from '../shared/access'
 import type { Language } from '../shared/i18n'
 import type { DependencyFix, DependencyReport } from '../shared/deps'
-import type { AutoFetchMinutes, ForgeContext, Theme, UpdateInfo, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
+import type { AutoFetchMinutes, ForgeAccount, ForgeContext, ForgeKind, ForgeRequest, NewForgeRequest, Theme, UpdateInfo, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
 
 const dependencyCache = (): string => join(app.getPath('userData'), 'dependencies')
 // Tests answer for all three public databases from one local server.
 const dependencySources = (): dependencies.Sources | undefined => {
   const server = process.env.CHRONICLE_DEPS_SERVER
   return server ? { osv: server, depsDev: server, endOfLife: server } : undefined
+}
+
+/** The repository's server with the token saved for it; null when there is no token. */
+async function forgeTarget(repo: string): Promise<{ context: ForgeContext; kind: ForgeKind; target: forgeApi.ForgeTarget | null }> {
+  const context = await forge.forgeContext(repo)
+  const kind = context && (context.kind ?? forgeTokens().kindFor(context.host))
+  if (!context || !kind) throw new Error(t('Remote этого репозитория не на GitHub и не на GitLab'))
+  const token = await forgeTokens().token(context.host)
+  return { context, kind, target: token ? { kind, origin: new URL(context.webUrl).origin, path: context.path, token } : null }
 }
 
 export interface RepoSnapshot {
@@ -49,7 +61,9 @@ export const api = {
       remoteList.then((list) => forge.forgeContext(repo, undefined, list)).catch(() => null),
       read.lastFetchTime(repo)
     ])
-    return { status, refs, remotes, stashes, journal, schedules, forge: forgeInfo, lastFetch }
+    // A self-hosted server's name may not tell its kind; a token saved for it does.
+    const known = forgeInfo && { ...forgeInfo, kind: forgeInfo.kind ?? forgeTokens().kindFor(forgeInfo.host) }
+    return { status, refs, remotes, stashes, journal, schedules, forge: known, lastFetch }
   },
   /** A fetch nobody asked for must not open a password window, so it fails instead. */
   autoFetch: (repo: string) => withoutPrompts(() => ops.fetchAll(repo)),
@@ -116,6 +130,21 @@ export const api = {
   setRemoteUrl: ops.setRemoteUrl,
   readIdentity: ops.readIdentity,
   setIdentity: ops.setIdentity,
+
+  /** Open requests on the server; null when there is no token for it yet. */
+  listRequests: async (repo: string): Promise<ForgeRequest[] | null> => {
+    const { target } = await forgeTarget(repo)
+    return target ? forgeApi.listRequests(target) : null
+  },
+  createRequest: async (repo: string, input: NewForgeRequest): Promise<string> => {
+    const { context, target } = await forgeTarget(repo)
+    if (!target) throw new Error(t('Нет токена для {host}. Добавь его в настройках.', { host: context.host }))
+    return forgeApi.createRequest(target, input)
+  },
+  checkoutRequest: async (repo: string, request: Pick<ForgeRequest, 'number' | 'sourceBranch' | 'fromFork'>): Promise<string> => {
+    const { context, kind } = await forgeTarget(repo)
+    return ops.checkoutRequest(repo, context.remote, { kind, number: request.number, sourceBranch: request.sourceBranch, fromFork: request.fromFork })
+  },
 
   repoKeyPath: ssh.repoKeyPath,
   useKeyForRepo: ssh.useKeyForRepo,
@@ -190,6 +219,11 @@ export interface AppApi {
   /** How often open repositories fetch by themselves; 0 turns it off. */
   autoFetchMinutes(): Promise<AutoFetchMinutes>
   setAutoFetchMinutes(minutes: AutoFetchMinutes): Promise<void>
+  /** Saved GitHub and GitLab tokens, by server; the tokens themselves stay in the main process. */
+  forgeAccounts(): Promise<ForgeAccount[]>
+  /** Checks the token with the server, then keeps it encrypted. */
+  addForgeToken(host: string, kind: ForgeKind, token: string): Promise<ForgeAccount>
+  removeForgeToken(host: string): Promise<void>
   /** Whether the person agreed to send package names and versions to public databases. */
   dependencyConsent(): Promise<boolean>
   setDependencyConsent(agreed: boolean): Promise<void>

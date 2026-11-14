@@ -3,7 +3,7 @@ import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
 import {
-  applyPatch, checkout, ignorePath, cherryPick, cloneRepository, commit, continueOperation, deleteTag, mergeBranch, resetTo, revertCommit, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
+  applyPatch, checkout, checkoutRequest, ignorePath, cherryPick, cloneRepository, commit, continueOperation, deleteTag, mergeBranch, resetTo, revertCommit, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
   readWorktreeConflicts, resolveWorktreeConflict, stageFiles, stashApply, stashClear, stashDrop, stashPush, unstageFiles
 } from '../src/core/ops'
 import { commitDiff, lastFetchTime, parseDiff, readBlob, readImageVersions, readLog, readRefs, readRemotes, readStashes, readStatus, repoFingerprint, stashDiff, worktreeDiff } from '../src/core/read'
@@ -638,5 +638,53 @@ describe('ignoring', () => {
     write(dir, '.gitignore', 'one\r\ntwo')
     await ignorePath(dir, 'x.tmp', 'extension')
     expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toBe('one\r\ntwo\r\n*.tmp\r\n')
+  })
+})
+
+describe('request branches', () => {
+  async function serverWithRequests(): Promise<{ dir: string; bare: string; other: string }> {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', '1\n', 'base')
+    const bare = await addOrigin(dir)
+    const other = tempDir()
+    await git(other, ['clone', '-q', bare, '.'])
+    await git(other, ['config', 'user.name', 'Other'])
+    await git(other, ['config', 'user.email', 'other@example.com'])
+    return { dir, bare, other }
+  }
+
+  it('tracks the remote branch of a request from this repository', async () => {
+    const { dir, other } = await serverWithRequests()
+    await git(other, ['switch', '-q', '-c', 'search'])
+    await commitFile(other, 'search.txt', 's\n', 'Add search')
+    await git(other, ['push', '-q', 'origin', 'search'])
+    expect(await checkoutRequest(dir, 'origin', { kind: 'github', number: 4, sourceBranch: 'search', fromFork: false })).toBe('search')
+    expect((await readStatus(dir)).head).toBe('search')
+    expect((await readStatus(dir)).upstream).toBe('origin/search')
+  })
+
+  it('takes a request from a fork through the ref the server keeps for it', async () => {
+    const { dir, other } = await serverWithRequests()
+    await commitFile(other, 'fork.txt', 'f\n', 'From a fork')
+    await git(other, ['push', '-q', 'origin', 'HEAD:refs/pull/7/head'])
+    expect(await checkoutRequest(dir, 'origin', { kind: 'github', number: 7, sourceBranch: 'patch-1', fromFork: true })).toBe('pr/7')
+    expect(await log(dir)).toEqual(['From a fork', 'base'])
+    await commitFile(other, 'fork.txt', 'g\n', 'More from the fork')
+    await git(other, ['push', '-q', 'origin', 'HEAD:refs/pull/7/head'])
+    await checkoutRequest(dir, 'origin', { kind: 'github', number: 7, sourceBranch: 'patch-1', fromFork: true })
+    expect(await log(dir)).toEqual(['More from the fork', 'From a fork', 'base'])
+  })
+
+  it('never moves a local request branch that went its own way', async () => {
+    const { dir, other } = await serverWithRequests()
+    await git(other, ['push', '-q', 'origin', 'HEAD:refs/merge-requests/3/head'])
+    await checkoutRequest(dir, 'origin', { kind: 'gitlab', number: 3, sourceBranch: 'x', fromFork: true })
+    await commitFile(dir, 'mine.txt', 'm\n', 'My own work')
+    await git(dir, ['switch', '-q', 'main'])
+    await commitFile(other, 'theirs.txt', 't\n', 'Their change')
+    await git(other, ['push', '-q', '--force', 'origin', 'HEAD:refs/merge-requests/3/head'])
+    const mine = await head(dir, 'refs/heads/mr/3')
+    await expect(checkoutRequest(dir, 'origin', { kind: 'gitlab', number: 3, sourceBranch: 'x', fromFork: true })).rejects.toThrow()
+    expect(await head(dir, 'refs/heads/mr/3')).toBe(mine)
   })
 })

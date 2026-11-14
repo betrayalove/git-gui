@@ -374,6 +374,41 @@ export interface ForgeContext {
   url: string
 }
 
+export type CheckState = 'success' | 'failure' | 'pending' | 'none'
+
+/** An open Pull Request on GitHub or Merge Request on GitLab. */
+export interface ForgeRequest {
+  number: number
+  title: string
+  url: string
+  author: string
+  sourceBranch: string
+  targetBranch: string
+  draft: boolean
+  /** The combined state of the CI checks on its last commit. */
+  checks: CheckState
+  updatedAt: string
+  /** Comes from another copy of the repository, so its branch is not on this remote. */
+  fromFork: boolean
+}
+
+export interface NewForgeRequest {
+  sourceBranch: string
+  targetBranch: string
+  title: string
+  description: string
+  draft: boolean
+}
+
+/** A saved token, without the token itself: that never leaves the main process. */
+export interface ForgeAccount {
+  host: string
+  kind: ForgeKind
+  account: string
+  /** False where the system has no credential store, so the token lasts only until the app closes. */
+  saved: boolean
+}
+
 export type SignatureState = 'none' | 'good' | 'untrusted' | 'bad' | 'expired' | 'revoked' | 'unknown-key' | 'unverifiable'
 
 export interface SignatureInfo {

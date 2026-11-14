@@ -7,7 +7,9 @@ import { CleanHistoryDialog, ConfirmDialog, NewBranchDialog, PromptDialog, PushD
 import { MergeDialog } from './MergeDialogs'
 import { RebaseDialog } from './RebaseDialog'
 import { AddWorktreeDialog, RepoExtrasSections } from './RepoExtras'
+import { useForgeAccounts } from '../forge-accounts'
 import { shortcut } from '../keys'
+import { CreateRequestDialog } from '../views/RequestsView'
 import { ContextMenu, Icon, type MenuItem } from './ui'
 import { t } from '../../../shared/i18n'
 
@@ -37,10 +39,11 @@ export function Section({ title, count, children, action }: { title: string; cou
   )
 }
 
-/** The views in the order of the side menu; Cmd or Ctrl with the digit 1 to 7 opens each. */
+/** The views in the order of the side menu; Cmd or Ctrl with the digit 1 to 8 opens each. */
 export const VIEWS: { id: View; label: string; icon: string }[] = [
   { id: 'history', label: t('История'), icon: 'history' },
   { id: 'changes', label: t('Изменения'), icon: 'changes' },
+  { id: 'requests', label: t('Запросы на слияние'), icon: 'merge' },
   { id: 'files', label: t('Файлы'), icon: 'file' },
   { id: 'stash', label: 'Stash', icon: 'stash' },
   { id: 'schedule', label: t('Публикации'), icon: 'schedule' },
@@ -63,6 +66,7 @@ export function Sidebar(): ReactNode {
   const forge = snapshot?.forge
   const requestsPage = forge ? requestsPageUrl(forge) : null
   const label = requestLabel(forge?.kind ?? null)
+  const accounts = useForgeAccounts()
 
   const counts: Partial<Record<View, number>> = { changes, stash: snapshot?.stashes.length, schedule: pending }
 
@@ -75,6 +79,11 @@ export function Sidebar(): ReactNode {
         { label: t('Переименовать…'), run: () => show(<RenameBranchDialog name={branch.name} upstream={branch.upstream} isDefault={defaults.has(branch.upstream ?? '')} />) },
         { label: t('Отправить на сервер…'), icon: 'push', run: () => show(<PushDialog branch={branch.name} />) },
         { label: t('Перенести на другую ветку…'), icon: 'branch', run: () => show(<RebaseDialog branch={branch.name} />) },
+        ...(forge && accounts?.some((account) => account.host === forge.host) ? [{
+          label: t('Создать {label}…', { label }),
+          icon: 'merge',
+          run: () => show(<CreateRequestDialog branch={branch.name} />)
+        }] : []),
         ...(forge && branch.upstream?.startsWith(`${forge.remote}/`) && newRequestUrl(forge, branch.upstream.slice(forge.remote.length + 1)) ? [{
           label: t('Создать {label} на сайте', { label }),
           icon: 'external',
@@ -148,7 +157,7 @@ export function Sidebar(): ReactNode {
       <nav className="side-nav" aria-label={t('Разделы')}>
         {VIEWS.map((item, index) => (
           <button key={item.id} className={view === item.id ? 'active' : ''} title={shortcut(String(index + 1))} onClick={() => setView(item.id)}>
-            <Icon name={item.icon} />{item.label}
+            <Icon name={item.icon} />{item.id === 'requests' && forge?.kind ? label : item.label}
             {counts[item.id] ? <span className="count">{counts[item.id]}</span> : null}
           </button>
         ))}

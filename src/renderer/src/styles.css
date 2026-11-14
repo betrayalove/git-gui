@@ -573,6 +573,23 @@ h1, h2, h3, h4, p { margin: 0; }
 
 /* Overlays */
 
+.requests { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.requests .pane-head { border-bottom: 1px solid var(--border-soft); }
+.requests .pane-head h2 { margin-right: 0; }
+.requests .pane-head .muted { margin-right: auto; font-size: 12px; }
+.request-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); }
+.request-row:hover { background: var(--surface-2); }
+.request-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.request-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.request-main .muted { font-size: 12px; }
+.request-actions { display: flex; gap: 6px; flex: none; }
+.check-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--surface-3); box-shadow: 0 0 0 1px var(--border); }
+.check-good { background: var(--add); box-shadow: none; }
+.check-bad { background: var(--del); box-shadow: none; }
+.check-pending { background: var(--draft); box-shadow: none; }
+.inline-actions.centered { justify-content: center; margin-top: 12px; }
+.token-row { gap: 12px; }
+.token-form { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .palette-scrim { align-items: flex-start; padding-top: 12vh; }
 .palette {
   width: 560px; max-width: 100%; max-height: 62vh; display: flex; flex-direction: column; overflow: hidden;

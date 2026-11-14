@@ -77,3 +77,9 @@ export function defaultBranchSettingsUrl(forge: ForgeContext): string | null {
   if (forge.kind === 'gitlab') return `${forge.webUrl}/-/settings/repository`
   return null
 }
+
+/** The page where a token with the rights the app needs is made: repo on GitHub, api on GitLab. */
+export function tokenPageUrl(kind: ForgeKind, host: string): string {
+  if (kind === 'github') return `https://${host}/settings/tokens/new?scopes=repo&description=Chronicle`
+  return `https://${host}/-/user_settings/personal_access_tokens?name=Chronicle&scopes=api`
+}

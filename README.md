@@ -84,7 +84,7 @@ Chronicle works through your system Git and the SSH keys on your computer. Local
 2. It asks for the key's password if the key has one.
 3. If no key fits, it creates one and walks you through adding it on GitHub or GitLab.
 
-Pull and merge requests open on the site with the branch already selected.
+Without a token, pull and merge requests open on the site with the branch already selected. With a GitHub or GitLab token in the settings they live right in the app: the open ones with the state of their CI checks, switching to a request's branch, forks included, and creating a new one, pushing the branch first. The token is kept encrypted in the system password store and only ever sent to its own server, while git still works through SSH keys.
 
 ## Screenshots
 

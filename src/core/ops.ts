@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { BlobContent, Commit, ConflictResolution, MergeMode, MergePreview, PushPreview, RenameBranchResult } from '../shared/types'
+import type { BlobContent, Commit, ConflictResolution, ForgeKind, MergeMode, MergePreview, PushPreview, RenameBranchResult } from '../shared/types'
+import { requestRef } from './forge-api'
 import { git, gitLine, isAncestor, revParse, runGit } from './git'
 import { readCommits, readRefs, readRemotes } from './read'
 import { ignorePattern, type IgnoreScope } from '../shared/ignore'
@@ -86,6 +87,39 @@ export async function checkoutRemoteBranch(cwd: string, remoteBranch: string): P
   const local = remoteBranch.split('/').slice(1).join('/')
   await validateBranchName(cwd, local)
   await git(cwd, ['switch', '--create', local, '--track', `refs/remotes/${remoteBranch}`])
+}
+
+/**
+ * Switches to the branch of a Pull or Merge Request. A request from this repository gets a local
+ * branch tracking its remote one. A request from a fork has no branch here, so its commits come
+ * from the ref the server keeps for it, onto `pr/<number>` or `mr/<number>`.
+ */
+export async function checkoutRequest(cwd: string, remote: string, request: { kind: ForgeKind; number: number; sourceBranch: string; fromFork: boolean }): Promise<string> {
+  assertRevision(remote, t('Недопустимое имя remote'))
+  if (!Number.isInteger(request.number) || request.number <= 0) throw new Error(t('Недопустимый номер запроса: {value}', { value: String(request.number) }))
+  const current = (await runGit(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { okCodes: [1] })).stdout.toString('utf8').trim()
+  if (!request.fromFork) {
+    const branch = request.sourceBranch
+    await validateBranchName(cwd, branch)
+    await git(cwd, ['fetch', '--', remote, `refs/heads/${branch}`])
+    if (branch === current) return branch
+    const exists = (await runGit(cwd, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { okCodes: [1] })).code === 0
+    // An existing branch is left as it is: it may hold work that is not on the server yet.
+    if (exists) await git(cwd, ['switch', branch])
+    else await git(cwd, ['switch', '--create', branch, '--track', `refs/remotes/${remote}/${branch}`])
+    return branch
+  }
+  const branch = `${request.kind === 'github' ? 'pr' : 'mr'}/${request.number}`
+  const ref = requestRef(request.kind, request.number)
+  if (branch === current) {
+    await git(cwd, ['fetch', '--', remote, ref])
+    await git(cwd, ['merge', '--ff-only', 'FETCH_HEAD'])
+    return branch
+  }
+  // Without a leading plus git refuses to move a branch that went its own way.
+  await git(cwd, ['fetch', '--', remote, `${ref}:refs/heads/${branch}`])
+  await git(cwd, ['switch', branch])
+  return branch
 }
 
 export async function createBranch(cwd: string, name: string, startPoint: string, switchTo: boolean): Promise<void> {

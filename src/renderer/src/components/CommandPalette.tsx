@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { filterCommands, type Command } from '../../../shared/commands'
+import { requestLabel } from '../../../shared/remote-url'
+import { useForgeAccounts } from '../forge-accounts'
 import { baseName } from '../format'
+import { CreateRequestDialog } from '../views/RequestsView'
 import { shortcut } from '../keys'
 import { useRepo } from '../store'
 import { useTabs } from '../tabs'
@@ -20,19 +23,23 @@ function useCommands(focusSearch: () => void): Command[] {
   const { tabs, activeId, select, close: closeTab, add } = useTabs()
   const status = snapshot?.status
   const lastApplied = [...(snapshot?.journal ?? [])].reverse().find((entry) => entry.state === 'applied')
+  const accounts = useForgeAccounts()
+  const forge = snapshot?.forge
+  const canRequest = Boolean(forge && accounts?.some((account) => account.host === forge.host))
   const views = t('Разделы')
   const actions = t('Действия')
   const branches = t('Ветки')
   const tabGroup = t('Вкладки')
   return [
     ...VIEWS.map((view, index): Command => ({
-      id: `view-${view.id}`, title: view.label, group: views, shortcut: shortcut(String(index + 1)), run: () => setView(view.id)
+      id: `view-${view.id}`, title: view.id === 'requests' && forge?.kind ? requestLabel(forge.kind) : view.label, group: views, shortcut: shortcut(String(index + 1)), run: () => setView(view.id)
     })),
     { id: 'search', title: t('Найти в истории'), group: actions, shortcut: shortcut('F'), run: focusSearch },
     ...(snapshot?.remotes.length ? [{ id: 'fetch', title: 'Fetch', group: actions, run: fetchNow }] : []),
     ...(status?.upstream ? [{ id: 'pull', title: 'Pull…', group: actions, run: () => show(<PullDialog />) }] : []),
     ...(status?.head ? [{ id: 'push', title: 'Push…', group: actions, run: () => show(<PushDialog branch={status.head!} />) }] : []),
     { id: 'branch', title: t('Новая ветка…'), group: actions, run: () => show(<NewBranchDialog />) },
+    ...(canRequest ? [{ id: 'request', title: t('Создать {label}…', { label: requestLabel(forge?.kind ?? null) }), group: actions, run: () => show(<CreateRequestDialog />) }] : []),
     ...(status?.files.length ? [{ id: 'stash', title: t('Сохранить правки в stash…'), group: actions, run: () => show(<NewStashDialog />) }] : []),
     ...(lastApplied ? [{
       id: 'undo', title: t('Отменить последнюю правку истории'), group: actions, shortcut: shortcut('Z'),

@@ -6,7 +6,8 @@ import type { SecretStore } from '../core/prompt-broker'
 const KEYCHAIN_WAIT_MS = 2 * 60_000
 
 /**
- * Key passwords the person chose to keep, encrypted by the operating system's credential store.
+ * Secrets the person chose to keep, such as key passwords and server tokens, encrypted by the
+ * operating system's credential store.
  *
  * On macOS any use of the store may show a system dialog, which an unsigned build gets after every
  * update, and the synchronous calls would freeze the whole app until it is answered. So only the

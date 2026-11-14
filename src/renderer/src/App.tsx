@@ -19,6 +19,7 @@ import { FilesView } from './views/FilesView'
 import { HistoryView } from './views/HistoryView'
 import { Inspector } from './views/Inspector'
 import { JournalView } from './views/JournalView'
+import { RequestsView } from './views/RequestsView'
 import { ScheduleView } from './views/ScheduleView'
 import { SettingsDialog } from './views/SettingsDialog'
 import { StashView } from './views/StashView'
@@ -205,6 +206,7 @@ function Workspace(): ReactNode {
             </div>
           )}
           {view === 'changes' && <ChangesView />}
+          {view === 'requests' && <RequestsView />}
           {view === 'files' && <FilesView />}
           {view === 'stash' && <StashView />}
           {view === 'schedule' && <ScheduleView />}

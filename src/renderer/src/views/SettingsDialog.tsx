@@ -3,6 +3,7 @@ import { AUTO_FETCH_CHOICES, type AutoFetchMinutes, type Theme, type UpdateInfo 
 import { appApi } from '../api'
 import { setAutoFetchMinutes, useAutoFetchMinutes } from '../auto-fetch'
 import { AccessDialog } from '../components/AccessDialog'
+import { ForgeTokensSection } from '../components/ForgeTokens'
 import { Icon, Modal } from '../components/ui'
 import { t, type Language } from '../../../shared/i18n'
 
@@ -16,7 +17,8 @@ function autoFetchLabel(minutes: AutoFetchMinutes): string {
   return minutes < 60 ? t('{count} мин', { count: minutes }) : t('{count} ч', { count: minutes / 60 })
 }
 
-export function SettingsDialog({ onClose }: { onClose: () => void }): ReactNode {
+/** `forgeHost` fills in the server of the open repository when a token for it is being added. */
+export function SettingsDialog({ onClose, forgeHost }: { onClose: () => void; forgeHost?: string }): ReactNode {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [autostart, setAutostart] = useState<{ available: boolean; enabled: boolean } | null>(null)
@@ -112,6 +114,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): ReactNode 
           )}
         </div>
       </section>
+      <ForgeTokensSection initialHost={forgeHost} />
       <section className="settings-section">
         <h3>{t('Запуск')}</h3>
         <label className="check">

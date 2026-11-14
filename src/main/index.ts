@@ -15,6 +15,7 @@ import { isRepository, repoRoot } from '../core/read'
 import { listSchedules, publishDue, waitingNotice } from '../core/schedule'
 import { checkForUpdate } from '../core/updates'
 import { api, type AppApi, type ApiMethod } from './api'
+import { ForgeTokens, forgeTokens, setForgeTokens } from './forge-tokens'
 import { PassphraseStore } from './passphrases'
 import { isLanguage, language, languageForLocale, setLanguage, t, type Language } from '../shared/i18n'
 import { DEFAULT_AUTO_FETCH_MINUTES, isAutoFetchMinutes, isTheme, type AutoFetchMinutes, type Theme } from '../shared/types'
@@ -135,6 +136,9 @@ function askPerson(prompt: AccessPrompt): Promise<PromptReply | null> {
 async function startPrompts(): Promise<void> {
   passphrases = new PassphraseStore(join(app.getPath('userData'), 'key-passwords.json'))
   await passphrases.load()
+  const tokens = new ForgeTokens(join(app.getPath('userData'), 'forge-tokens.json'), join(app.getPath('userData'), 'forge-accounts.json'))
+  await tokens.load()
+  setForgeTokens(tokens)
   askpass = new AskpassServer((request) => broker.handle(request))
   broker = new PromptBroker(askPerson, passphrases, (path, value) => verifyPassphrase(path, value, askpass))
   await askpass.start(join(app.getPath('userData'), 'askpass'))
@@ -315,6 +319,9 @@ const appHandlers: AppApi = {
     autoFetchMinutes = minutes
     await saveState()
   },
+  forgeAccounts: async () => forgeTokens().list(),
+  addForgeToken: (host, kind, token) => forgeTokens().add(host, kind, token),
+  removeForgeToken: (host) => forgeTokens().remove(host),
   dependencyConsent: async () => dependencyConsent,
   setDependencyConsent: async (agreed) => {
     dependencyConsent = agreed
