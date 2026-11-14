@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import type { LfsInfo, Submodule, Worktree } from '../../../shared/types'
 import { appApi } from '../api'
-import { shortSha } from '../format'
+import { baseName, shortSha } from '../format'
 import { useRepo } from '../store'
 import { ConfirmDialog, PromptDialog, useDialogs } from './dialogs'
 import { ContextMenu, Icon, Modal, type MenuItem } from './ui'
 import { t } from '../../../shared/i18n'
 
-function baseName(path: string): string {
-  return path.replaceAll('\\', '/').split('/').filter(Boolean).at(-1) ?? path
-}
 
 function joinPath(parent: string, name: string): string {
   const separator = parent.includes('\\') && !parent.includes('/') ? '\\' : '/'

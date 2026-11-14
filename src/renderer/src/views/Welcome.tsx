@@ -6,6 +6,7 @@ import { parseRemoteUrl } from '../../../shared/remote-url'
 import { AccessDialog } from '../components/AccessDialog'
 import { Icon, Modal } from '../components/ui'
 import { SettingsDialog } from './SettingsDialog'
+import { baseName } from '../format'
 import { t } from '../../../shared/i18n'
 
 function CloneDialog({ onClose, onOpen }: { onClose: () => void; onOpen: (repo: string) => void }): ReactNode {
@@ -138,6 +139,3 @@ export function Welcome({ onOpen }: { onOpen: (repo: string) => void }): ReactNo
   )
 }
 
-function baseName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
-}

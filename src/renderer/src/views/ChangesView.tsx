@@ -1,12 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import type { CommitIdentity, WorktreeConflict } from '../../../core/ops'
+import { extensionOf, folderOf, type IgnoreScope } from '../../../shared/ignore'
 import { buildFilePatch, buildLinesPatch } from '../../../shared/patch'
 import type { ConflictResolution, DiffResult, FileDiff, FileState, StatusFile } from '../../../shared/types'
 import { ConflictEditor } from '../components/ConflictEditor'
 import { ConfirmDialog, useDialogs } from '../components/dialogs'
 import { DiffView } from '../components/DiffView'
 import { useDiffPreferences } from '../diff-prefs'
-import { Avatar, EmptyState, Icon, Modal } from '../components/ui'
+import { Avatar, ContextMenu, EmptyState, Icon, Modal, type MenuItem } from '../components/ui'
 import { useRepo } from '../store'
 import { t } from '../../../shared/i18n'
 
@@ -20,7 +21,7 @@ interface Selection {
   untracked: boolean
 }
 
-function FileRow({ file, state, staged, active, onSelect, onToggle, onDiscard }: {
+function FileRow({ file, state, staged, active, onSelect, onToggle, onDiscard, onMenu }: {
   file: StatusFile
   state: FileState
   staged: boolean
@@ -28,10 +29,11 @@ function FileRow({ file, state, staged, active, onSelect, onToggle, onDiscard }:
   onSelect: () => void
   onToggle: () => void
   onDiscard?: () => void
+  onMenu?: (event: MouseEvent) => void
 }): ReactNode {
   const slash = file.path.lastIndexOf('/')
   return (
-    <div className={`file-row ${active ? 'active' : ''}`} onClick={onSelect}>
+    <div className={`file-row ${active ? 'active' : ''}`} onClick={onSelect} onContextMenu={onMenu}>
       <input
         type="checkbox"
         checked={staged}
@@ -240,6 +242,30 @@ export function ChangesView(): ReactNode {
     if (pushed) toast('success', t('Коммит создан и отправлен'))
   }
 
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
+  const fileMenu = (event: MouseEvent, file: StatusFile): void => {
+    event.preventDefault()
+    const ignore = (scope: IgnoreScope): void => void run(t('Добавляю в .gitignore'), async () => {
+      const pattern = await client.ignorePath(file.path, scope)
+      toast('success', t('В .gitignore добавлено: {pattern}', { pattern }))
+    })
+    const extension = extensionOf(file.path)
+    const folder = folderOf(file.path)
+    const untracked = file.unstaged === 'untracked'
+    setMenu({
+      x: event.clientX, y: event.clientY,
+      items: [
+        ...(untracked ? [
+          { label: t('Игнорировать файл'), run: () => ignore('file') },
+          ...(extension ? [{ label: t('Игнорировать все файлы .{extension}', { extension }), run: () => ignore('extension') }] : []),
+          ...(folder ? [{ label: t('Игнорировать папку {folder}', { folder }), run: () => ignore('folder') }] : []),
+          { separator: true }
+        ] : []),
+        { label: untracked ? t('Удалить файл…') : t('Отменить правки…'), icon: 'undo', danger: true, run: () => discard(file) }
+      ]
+    })
+  }
+
   const discard = (file: StatusFile): void => {
     const untracked = file.unstaged === 'untracked'
     show(<ConfirmDialog
@@ -316,6 +342,7 @@ export function ChangesView(): ReactNode {
               onSelect={() => setSelection({ path: file.path, staged: false, untracked: file.unstaged === 'untracked' })}
               onToggle={() => void run(t('Добавляю в индекс'), () => client.stageFiles([file.path]))}
               onDiscard={() => discard(file)}
+              onMenu={(event) => fileMenu(event, file)}
             />
           ))}
         </div>
@@ -365,6 +392,7 @@ export function ChangesView(): ReactNode {
           </>
         ) : <EmptyState icon="changes" title={files.length ? t('Выбери файл') : t('Рабочая папка чистая')}>{files.length ? t('Его изменения появятся здесь.') : t('Незакоммиченных правок нет.')}</EmptyState>}
       </div>
+      {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
     </div>
   )
 }

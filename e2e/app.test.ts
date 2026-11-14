@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright'
@@ -261,6 +261,44 @@ describe('Chronicle', () => {
     await page.locator('.image-side.del', { hasText: 'Файла не было' }).waitFor()
     rmSync(join(repo, 'pixel.png'))
     await page.locator('.side-nav button', { hasText: 'История' }).click()
+  })
+
+  it('ignores an untracked file type from the changes view', async () => {
+    writeFileSync(join(repo, 'debug.log'), 'noise\n')
+    await page.locator('.side-nav button', { hasText: 'Изменения' }).click()
+    await page.locator('.file-row', { hasText: 'debug.log' }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Игнорировать все файлы .log' }).click()
+    await page.locator('.file-row', { hasText: 'debug.log' }).waitFor({ state: 'detached' })
+    expect(readFileSync(join(repo, '.gitignore'), 'utf8')).toBe('*.log\n')
+    rmSync(join(repo, '.gitignore'))
+    rmSync(join(repo, 'debug.log'))
+    await page.locator('.side-nav button', { hasText: 'История' }).click()
+  })
+
+  it('runs commands from the palette and the keyboard', async () => {
+    await git(repo, ['branch', 'palette-target'])
+    await page.locator('.side-item', { hasText: 'palette-target' }).waitFor()
+    await page.keyboard.press('ControlOrMeta+2')
+    await page.locator('.side-nav button.active', { hasText: 'Изменения' }).waitFor()
+    await page.keyboard.press('ControlOrMeta+1')
+    await page.locator('.side-nav button.active', { hasText: 'История' }).waitFor()
+
+    await page.keyboard.press('ControlOrMeta+k')
+    await page.getByRole('combobox', { name: 'Команда' }).fill('ветку palette')
+    await expect.poll(() => page.getByRole('option').allInnerTexts()).toEqual(['Перейти на ветку palette-target'])
+    await shot('19-palette')
+    await page.keyboard.press('Enter')
+    await expect.poll(() => gitLine(repo, ['branch', '--show-current'])).toBe('palette-target')
+
+    await page.getByRole('button', { name: 'Команды' }).click()
+    await page.getByRole('combobox', { name: 'Команда' }).fill('main')
+    await page.getByRole('option', { name: 'Перейти на ветку main' }).click()
+    await expect.poll(() => gitLine(repo, ['branch', '--show-current'])).toBe('main')
+    await git(repo, ['branch', '--delete', 'palette-target'])
+
+    await page.keyboard.press('ControlOrMeta+f')
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe('Поиск по истории')
+    await page.keyboard.press('Escape')
   })
 
   it('resolves a merge conflict in the working tree', async () => {

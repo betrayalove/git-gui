@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type { BlobContent, Commit, ConflictResolution, MergeMode, MergePreview, PushPreview, RenameBranchResult } from '../shared/types'
 import { git, gitLine, isAncestor, revParse, runGit } from './git'
 import { readCommits, readRefs, readRemotes } from './read'
+import { ignorePattern, type IgnoreScope } from '../shared/ignore'
 import { sshCommandFor } from './ssh'
 import { t } from '../shared/i18n'
 
@@ -229,6 +230,26 @@ export async function resetTo(cwd: string, sha: string, mode: 'soft' | 'mixed' |
   assertRevision(sha)
   if (!['soft', 'mixed', 'hard'].includes(mode)) throw new Error(t('Неизвестный режим сброса: {mode}', { mode }))
   await git(cwd, ['reset', `--${mode}`, sha, '--'])
+}
+
+// Ignoring
+
+/** Adds a line for an untracked path to the .gitignore at the repository root, unless it is there already. */
+export async function ignorePath(cwd: string, path: string, scope: IgnoreScope): Promise<string> {
+  const known = scope === 'file' || scope === 'folder' || scope === 'extension'
+  const pattern = known && typeof path === 'string' && path ? ignorePattern(path, scope) : null
+  if (!pattern) throw new Error(t('Не получается составить правило для {path}', { path: String(path) }))
+  const file = join(await gitLine(cwd, ['rev-parse', '--show-toplevel']), '.gitignore')
+  const existing = await readFile(file, 'utf8').catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return ''
+    throw error
+  })
+  if (existing.split(/\r?\n/).includes(pattern)) return pattern
+  // Keeps the file's own line endings, so the change is one line in a diff.
+  const newline = existing.includes('\r\n') ? '\r\n' : '\n'
+  const separator = existing && !existing.endsWith('\n') ? newline : ''
+  await writeFile(file, `${existing}${separator}${pattern}${newline}`)
+  return pattern
 }
 
 // Tags

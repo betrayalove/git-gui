@@ -74,6 +74,8 @@ interface RepoContextValue {
   /** Why the last fetch nobody asked for failed, if it did. */
   autoFetchError: string | null
   setAutoFetchError: (error: string | null) => void
+  /** The Fetch button: fetches from every remote and says how it went. */
+  fetchNow: () => void
 }
 
 export type SearchMode = 'message' | 'content'
@@ -293,6 +295,11 @@ export function RepoProvider({ repo, active, onOpen, children }: {
     view, setView, selected, setSelected, busy, run, toast, toasts, dismissToast,
     access, showAccess: setAccess, search, setSearch, searchMode, setSearchMode, jumpTo, focus, filePath, openFile,
     active, autoFetchError, setAutoFetchError,
+    fetchNow: () => void run(t('Обновляю'), async () => {
+      await client.fetchAll()
+      setAutoFetchError(null)
+      toast('success', t('Данные с сервера обновлены'))
+    }),
     openRepository: (path: string) => void appApi.openRepository(path).then(onOpen).catch((error: Error) => toast('error', error.message))
   }
   return <RepoContext.Provider value={value}>{children}</RepoContext.Provider>

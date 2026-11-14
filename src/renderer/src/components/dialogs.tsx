@@ -97,6 +97,32 @@ export function PromptDialog({ title, label, initial = '', placeholder, confirmL
   )
 }
 
+export function NewBranchDialog(): ReactNode {
+  const { client, run } = useRepo()
+  return (
+    <PromptDialog
+      title={t('Новая ветка')}
+      label={t('Имя ветки')}
+      confirmLabel={t('Создать и перейти')}
+      onSubmit={(name) => void run(t('Создаю ветку'), () => client.createBranch(name, 'HEAD', true))}
+    />
+  )
+}
+
+export function NewStashDialog(): ReactNode {
+  const { client, run } = useRepo()
+  return (
+    <PromptDialog
+      title={t('Сохранить правки в stash')}
+      label={t('Описание')}
+      placeholder={t('Что здесь сохранено')}
+      confirmLabel={t('Сохранить')}
+      hint={t('Правки, включая новые файлы, уйдут из рабочей папки и сохранятся в stash.')}
+      onSubmit={(message) => void run(t('Сохраняю в stash'), () => client.stashPush(message, true))}
+    />
+  )
+}
+
 export function CommitLine({ commit }: { commit: Commit }): ReactNode {
   return (
     <li className="commit-line">

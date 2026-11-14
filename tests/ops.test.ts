@@ -3,11 +3,12 @@ import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
 import {
-  applyPatch, checkout, cherryPick, cloneRepository, commit, continueOperation, deleteTag, mergeBranch, resetTo, revertCommit, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
+  applyPatch, checkout, ignorePath, cherryPick, cloneRepository, commit, continueOperation, deleteTag, mergeBranch, resetTo, revertCommit, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
   readWorktreeConflicts, resolveWorktreeConflict, stageFiles, stashApply, stashClear, stashDrop, stashPush, unstageFiles
 } from '../src/core/ops'
 import { commitDiff, lastFetchTime, parseDiff, readBlob, readImageVersions, readLog, readRefs, readRemotes, readStashes, readStatus, repoFingerprint, stashDiff, worktreeDiff } from '../src/core/read'
 import { applyRewrite, rewrittenTagsOnRemote } from '../src/core/rewrite'
+import { ignorePattern } from '../src/shared/ignore'
 import { buildFilePatch, buildLinesPatch } from '../src/shared/patch'
 import type { FileDiff } from '../src/shared/types'
 import { addOrigin, commitFile, createRepo, head, log, tempDir, write } from './helpers'
@@ -598,5 +599,44 @@ describe('images', () => {
     write(outside, 'secret.png', image('outside'))
     const path = relative(dir, join(outside, 'secret.png'))
     await expect(readImageVersions(dir, { kind: 'worktree', staged: false, untracked: true }, path)).rejects.toThrow()
+  })
+})
+
+describe('ignoring', () => {
+  it('builds lines that match only the chosen path', () => {
+    expect(ignorePattern('logs/today.log', 'file')).toBe('/logs/today.log')
+    expect(ignorePattern('logs/today.log', 'folder')).toBe('/logs/')
+    expect(ignorePattern('logs/today.log', 'extension')).toBe('*.log')
+    expect(ignorePattern('a[1]*?.txt', 'file')).toBe('/a\\[1]\\*\\?.txt')
+    expect(ignorePattern('#notes ', 'file')).toBe('/#notes\\ ')
+    expect(ignorePattern('top.txt', 'folder')).toBeNull()
+    expect(ignorePattern('Makefile', 'extension')).toBeNull()
+  })
+
+  it('hides the file from the status and keeps the existing lines', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, '.gitignore', 'node_modules/', 'ignore')
+    write(dir, 'logs/today.log', 'x\n')
+    write(dir, 'logs/keep.txt', 'x\n')
+    write(dir, 'a[1].txt', 'x\n')
+    write(dir, 'a1.txt', 'x\n')
+    await ignorePath(dir, 'logs/today.log', 'extension')
+    await ignorePath(dir, 'a[1].txt', 'file')
+    await ignorePath(dir, 'a[1].txt', 'file')
+    expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toBe('node_modules/\n*.log\n/a\\[1].txt\n')
+    const paths = (await readStatus(dir)).files.map((file) => file.path)
+    expect(paths).toEqual(expect.arrayContaining(['logs/keep.txt', 'a1.txt', '.gitignore']))
+    expect(paths).not.toContain('logs/today.log')
+    expect(paths).not.toContain('a[1].txt')
+  })
+
+  it('creates the .gitignore when there is none and keeps Windows line endings', async () => {
+    const dir = await createRepo()
+    write(dir, 'build/out.bin', 'x')
+    await ignorePath(dir, 'build/out.bin', 'folder')
+    expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toBe('/build/\n')
+    write(dir, '.gitignore', 'one\r\ntwo')
+    await ignorePath(dir, 'x.tmp', 'extension')
+    expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toBe('one\r\ntwo\r\n*.tmp\r\n')
   })
 })

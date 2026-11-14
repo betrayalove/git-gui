@@ -3,10 +3,11 @@ import { defaultBranchSettingsUrl, newRequestUrl, requestLabel, requestsPageUrl 
 import type { RefInfo } from '../../../shared/types'
 import { appApi } from '../api'
 import { useRepo, type View } from '../store'
-import { CleanHistoryDialog, ConfirmDialog, PromptDialog, PushDialog, RenameBranchDialog, RenameRemoteBranchDialog, ReplaceAuthorDialog, useDialogs } from './dialogs'
+import { CleanHistoryDialog, ConfirmDialog, NewBranchDialog, PromptDialog, PushDialog, RenameBranchDialog, RenameRemoteBranchDialog, ReplaceAuthorDialog, useDialogs } from './dialogs'
 import { MergeDialog } from './MergeDialogs'
 import { RebaseDialog } from './RebaseDialog'
 import { AddWorktreeDialog, RepoExtrasSections } from './RepoExtras'
+import { shortcut } from '../keys'
 import { ContextMenu, Icon, type MenuItem } from './ui'
 import { t } from '../../../shared/i18n'
 
@@ -36,6 +37,17 @@ export function Section({ title, count, children, action }: { title: string; cou
   )
 }
 
+/** The views in the order of the side menu; Cmd or Ctrl with the digit 1 to 7 opens each. */
+export const VIEWS: { id: View; label: string; icon: string }[] = [
+  { id: 'history', label: t('История'), icon: 'history' },
+  { id: 'changes', label: t('Изменения'), icon: 'changes' },
+  { id: 'files', label: t('Файлы'), icon: 'file' },
+  { id: 'stash', label: 'Stash', icon: 'stash' },
+  { id: 'schedule', label: t('Публикации'), icon: 'schedule' },
+  { id: 'dependencies', label: t('Зависимости'), icon: 'shield' },
+  { id: 'journal', label: t('Журнал'), icon: 'journal' }
+]
+
 export function Sidebar(): ReactNode {
   const { snapshot, view, setView, client, run, jumpTo, reload } = useRepo()
   const { show } = useDialogs()
@@ -52,15 +64,7 @@ export function Sidebar(): ReactNode {
   const requestsPage = forge ? requestsPageUrl(forge) : null
   const label = requestLabel(forge?.kind ?? null)
 
-  const nav: { id: View; label: string; icon: string; count?: number }[] = [
-    { id: 'history', label: t('История'), icon: 'history' },
-    { id: 'changes', label: t('Изменения'), icon: 'changes', count: changes },
-    { id: 'files', label: t('Файлы'), icon: 'file' },
-    { id: 'stash', label: 'Stash', icon: 'stash', count: snapshot?.stashes.length },
-    { id: 'schedule', label: t('Публикации'), icon: 'schedule', count: pending },
-    { id: 'dependencies', label: t('Зависимости'), icon: 'shield' },
-    { id: 'journal', label: t('Журнал'), icon: 'journal' }
-  ]
+  const counts: Partial<Record<View, number>> = { changes, stash: snapshot?.stashes.length, schedule: pending }
 
   const branchMenu = (event: MouseEvent, branch: RefInfo): void => {
     event.preventDefault()
@@ -142,10 +146,10 @@ export function Sidebar(): ReactNode {
   return (
     <aside className="sidebar">
       <nav className="side-nav" aria-label={t('Разделы')}>
-        {nav.map((item) => (
-          <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => setView(item.id)}>
+        {VIEWS.map((item, index) => (
+          <button key={item.id} className={view === item.id ? 'active' : ''} title={shortcut(String(index + 1))} onClick={() => setView(item.id)}>
             <Icon name={item.icon} />{item.label}
-            {item.count ? <span className="count">{item.count}</span> : null}
+            {counts[item.id] ? <span className="count">{counts[item.id]}</span> : null}
           </button>
         ))}
       </nav>
@@ -153,12 +157,7 @@ export function Sidebar(): ReactNode {
         <Section
           title={t('Ветки')}
           count={branches.length}
-          action={<button className="icon-btn" title={t('Новая ветка')} aria-label={t('Новая ветка')} onClick={() => show(<PromptDialog
-            title={t('Новая ветка')}
-            label={t('Имя ветки')}
-            confirmLabel={t('Создать и перейти')}
-            onSubmit={(name) => void run(t('Создаю ветку'), () => client.createBranch(name, 'HEAD', true))}
-          />)}><Icon name="plus" size={13} /></button>}
+          action={<button className="icon-btn" title={t('Новая ветка')} aria-label={t('Новая ветка')} onClick={() => show(<NewBranchDialog />)}><Icon name="plus" size={13} /></button>}
         >
           {branches.map((branch) => (
             <button

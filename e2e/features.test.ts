@@ -261,11 +261,15 @@ describe('Tabs and background fetch', () => {
 
     await tab('alpha').click()
     await page.locator('.side-nav button.active', { hasText: 'Изменения' }).waitFor()
+    await page.keyboard.press('Control+Tab')
+    await expect.poll(() => tab('beta').getAttribute('aria-selected')).toBe('true')
+    await page.keyboard.press('Control+Shift+Tab')
+    await expect.poll(() => tab('alpha').getAttribute('aria-selected')).toBe('true')
 
     // Opening a repository that already has a tab goes to that tab. The recent list may now hold
     // beta twice, as the test wrote its path (/var, C:\Users\RUNNER~1) and as git spells it,
     // and both lead to the same repository.
-    await page.getByRole('button', { name: 'Новая вкладка' }).click()
+    await page.keyboard.press('ControlOrMeta+t')
     await page.locator('.recent-row b', { hasText: /^beta$/ }).first().click()
     await expect.poll(() => page.getByRole('tab').allInnerTexts()).toEqual(['alpha', 'beta'])
     expect(await tab('beta').getAttribute('aria-selected')).toBe('true')

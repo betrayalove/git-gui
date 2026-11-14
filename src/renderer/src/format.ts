@@ -1,5 +1,10 @@
 import { locale, t } from '../../shared/i18n'
 
+/** The last part of a path, written with either kind of slash. */
+export function baseName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+}
+
 export { plural } from '../../shared/i18n'
 
 export function shortSha(sha: string): string {

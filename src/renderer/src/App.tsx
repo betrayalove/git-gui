@@ -1,15 +1,18 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { buildPlan, EMPTY_DRAFT } from '../../shared/draft'
 import type { UpdateInfo } from '../../shared/types'
 import { appApi, platform } from './api'
 import { AccessDialog } from './components/AccessDialog'
+import { CommandPalette } from './components/CommandPalette'
 import { DialogProvider, PushDialog, ReviewDialog, useDialogs } from './components/dialogs'
 import { PullDialog } from './components/MergeDialogs'
 import { PromptHost } from './components/PromptHost'
-import { Sidebar } from './components/Sidebar'
+import { Sidebar, VIEWS } from './components/Sidebar'
 import { Icon } from './components/ui'
-import { formatRelative, plural } from './format'
+import { baseName, formatRelative, plural } from './format'
 import { RepoProvider, useRepo } from './store'
+import { isModifier, shortcut } from './keys'
+import { TabsContext, useTabs, type Tab, type TabsValue } from './tabs'
 import { ChangesView } from './views/ChangesView'
 import { DependenciesView } from './views/DependenciesView'
 import { FilesView } from './views/FilesView'
@@ -22,31 +25,6 @@ import { StashView } from './views/StashView'
 import { Welcome } from './views/Welcome'
 import { t, translateRecord } from '../../shared/i18n'
 
-function baseName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
-}
-
-interface Tab {
-  id: number
-  /** Null while the tab shows the start screen. */
-  repo: string | null
-}
-
-interface TabsValue {
-  tabs: Tab[]
-  activeId: number
-  select: (id: number) => void
-  close: (id: number) => void
-  add: () => void
-}
-
-const TabsContext = createContext<TabsValue | null>(null)
-
-function useTabs(): TabsValue {
-  const value = useContext(TabsContext)
-  if (!value) throw new Error('useTabs used outside the tabs')
-  return value
-}
 
 function TabStrip(): ReactNode {
   const { tabs, activeId, select, close, add } = useTabs()
@@ -76,8 +54,8 @@ function fetchTitle(lastFetch: string | null | undefined, error: string | null):
   return error ? `${last}\n${t('Фоновый fetch не удался: {reason}', { reason: error.split('\n')[0] })}` : last
 }
 
-function Toolbar(): ReactNode {
-  const { snapshot, client, run, toast, busy, view, search, setSearch, searchMode, setSearchMode, autoFetchError, setAutoFetchError, active } = useRepo()
+function Toolbar({ focusSearch }: { focusSearch: () => void }): ReactNode {
+  const { snapshot, client, run, busy, view, search, setSearch, searchMode, setSearchMode, autoFetchError, fetchNow, active } = useRepo()
   const { show, close } = useDialogs()
   const status = snapshot?.status
   const lastApplied = [...(snapshot?.journal ?? [])].reverse().find((entry) => entry.state === 'applied')
@@ -90,11 +68,7 @@ function Toolbar(): ReactNode {
         {status?.head ?? (status?.detached ? `HEAD ${status.headSha?.slice(0, 7)}` : '…')}
       </span>
       <div className="toolbar-actions">
-        <button className={`tool ${autoFetchError ? 'tool-warn' : ''}`} title={fetchTitle(snapshot?.lastFetch, autoFetchError)} onClick={() => void run(t('Обновляю'), async () => {
-          await client.fetchAll()
-          setAutoFetchError(null)
-          toast('success', t('Данные с сервера обновлены'))
-        })}><Icon name="fetch" />Fetch</button>
+        <button className={`tool ${autoFetchError ? 'tool-warn' : ''}`} title={fetchTitle(snapshot?.lastFetch, autoFetchError)} onClick={fetchNow}><Icon name="fetch" />Fetch</button>
         <button
           className="tool"
           disabled={!status?.upstream}
@@ -115,6 +89,7 @@ function Toolbar(): ReactNode {
       </div>
       <div className="toolbar-right">
         {busy && <span className="busy"><span className="spinner" />{busy}…</span>}
+        <button className="icon-btn" title={`${t('Команды')} (${shortcut('K')})`} aria-label={t('Команды')} onClick={() => show(<CommandPalette focusSearch={focusSearch} />)}><Icon name="command" /></button>
         <button className="icon-btn" title={t('Настройки')} aria-label={t('Настройки')} onClick={() => show(<SettingsDialog onClose={close} />)}><Icon name="gear" /></button>
         {view === 'history' && (
           <label className="search">
@@ -170,26 +145,56 @@ function Toasts(): ReactNode {
 }
 
 function Workspace(): ReactNode {
-  const { view, snapshot, client, run, repo, access, showAccess, reload, active } = useRepo()
+  const { view, setView, snapshot, client, run, repo, access, showAccess, reload, active } = useRepo()
+  const { show, close } = useDialogs()
   const lastApplied = [...(snapshot?.journal ?? [])].reverse().find((entry) => entry.state === 'applied')
+  const root = useRef<HTMLDivElement>(null)
+
+  const focusSearch = useCallback((): void => {
+    setView('history')
+    // The search field exists only in the history, so it is looked up once that view is drawn.
+    setTimeout(() => root.current?.querySelector<HTMLInputElement>('.search input')?.focus())
+  }, [setView])
 
   useEffect(() => {
     if (!active) return
     const onKey = (event: KeyboardEvent): void => {
+      // An open dialog keeps the keys, so a shortcut never throws away what is typed in it.
+      if (root.current?.querySelector('[role="dialog"]')) return
+      const key = event.key.toLowerCase()
+      if (isModifier(event) && !event.shiftKey && !event.altKey) {
+        const viewIndex = Number(key) - 1
+        if (key === 'k') {
+          event.preventDefault()
+          return show(<CommandPalette focusSearch={focusSearch} />)
+        }
+        if (key === 'f') {
+          event.preventDefault()
+          return focusSearch()
+        }
+        if (key === ',') {
+          event.preventDefault()
+          return show(<SettingsDialog onClose={close} />)
+        }
+        if (Number.isInteger(viewIndex) && VIEWS[viewIndex]) {
+          event.preventDefault()
+          return setView(VIEWS[viewIndex].id)
+        }
+      }
       const target = event.target as HTMLElement
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && lastApplied) {
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && key === 'z' && lastApplied) {
         event.preventDefault()
         void run(t('Отменяю'), () => client.undoEntry(lastApplied.id))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [active, client, lastApplied, run])
+  }, [active, client, close, focusSearch, lastApplied, run, setView, show])
 
   return (
-    <div className="workspace">
-      <Toolbar />
+    <div className="workspace" ref={root}>
+      <Toolbar focusSearch={focusSearch} />
       <div className="workspace-body">
         <Sidebar />
         <main className="main-pane">
@@ -299,7 +304,28 @@ export function App(): ReactNode {
     return { ...current, tabs: current.tabs.map((tab) => (tab.id === id ? { ...tab, repo } : tab)) }
   }), [])
 
-  const value: TabsValue = { tabs, activeId, select, close, add }
+  const cycle = useCallback((step: number) => setState((current) => {
+    const index = current.tabs.findIndex((tab) => tab.id === current.activeId)
+    const next = (index + step + current.tabs.length) % current.tabs.length
+    return { ...current, activeId: current.tabs[next].id }
+  }), [])
+
+  // Tab shortcuts work on every tab, the start screen included.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (isModifier(event) && !event.shiftKey && event.key.toLowerCase() === 't') {
+        event.preventDefault()
+        add()
+      } else if (event.ctrlKey && event.key === 'Tab') {
+        event.preventDefault()
+        cycle(event.shiftKey ? -1 : 1)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [add, cycle])
+
+  const value: TabsValue = { tabs, activeId, select, close, add, cycle }
   return (
     <TabsContext.Provider value={value}>
       {tabs.map((tab) => (

@@ -69,6 +69,7 @@ export const api = {
   stageAll: ops.stageAll,
   unstageFiles: ops.unstageFiles,
   discardFiles: ops.discardFiles,
+  ignorePath: ops.ignorePath,
   applyPatch: ops.applyPatch,
   readWorktreeConflicts: ops.readWorktreeConflicts,
   resolveWorktreeConflict: ops.resolveWorktreeConflict,

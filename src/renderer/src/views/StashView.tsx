@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { DiffResult } from '../../../shared/types'
-import { ConfirmDialog, PromptDialog, useDialogs } from '../components/dialogs'
+import { ConfirmDialog, NewStashDialog, PromptDialog, useDialogs } from '../components/dialogs'
 import { DiffView } from '../components/DiffView'
 import { useDiffPreferences } from '../diff-prefs'
 import { EmptyState, Icon } from '../components/ui'
@@ -30,14 +30,7 @@ export function StashView(): ReactNode {
     return () => { cancelled = true }
   }, [active, client, ignoreWhitespace])
 
-  const newStash = (): void => show(<PromptDialog
-    title={t('Сохранить правки в stash')}
-    label={t('Описание')}
-    placeholder={t('Что здесь сохранено')}
-    confirmLabel={t('Сохранить')}
-    hint={t('Правки, включая новые файлы, уйдут из рабочей папки и сохранятся в stash.')}
-    onSubmit={(message) => void run(t('Сохраняю в stash'), () => client.stashPush(message, true))}
-  />)
+  const newStash = (): void => show(<NewStashDialog />)
 
   return (
     <div className="split-view">
