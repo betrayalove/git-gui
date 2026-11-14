@@ -54,6 +54,7 @@ export const api = {
   stashDiff: read.stashDiff,
   worktreeDiff: read.worktreeDiff,
   readBlob: read.readBlob,
+  readImageVersions: read.readImageVersions,
   searchChanges: read.searchChanges,
   listFiles: read.listFiles,
   fileHistory: read.fileHistory,

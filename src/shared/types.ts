@@ -96,6 +96,24 @@ export interface DiffResult {
   truncated: boolean
 }
 
+export interface DiffOptions {
+  ignoreWhitespace?: boolean
+}
+
+/** Where a diff came from, so both versions of a file in it can be read again. */
+export type DiffSource =
+  | { kind: 'commit'; sha: string }
+  | { kind: 'stash'; sha: string }
+  | { kind: 'worktree'; staged: boolean; untracked: boolean }
+
+/** A changed image before and after, as data URLs; null where that version does not exist. */
+export interface ImageVersions {
+  before: string | null
+  after: string | null
+  /** One of the versions is too big to show. */
+  tooLarge: boolean
+}
+
 /** Editable commit metadata. Omitted fields stay untouched. */
 export interface CommitEdit {
   message?: string

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { applyDraftToCommits } from '../../../shared/draft'
 import type { Commit, CommitEdit, DiffResult } from '../../../shared/types'
 import { DiffView } from '../components/DiffView'
+import { useDiffPreferences } from '../diff-prefs'
 import { Avatar, EmptyState, Icon } from '../components/ui'
 import { formatFull, isoToLocalInput, offsetOf, plural, shiftIso, shortSha } from '../format'
 import { useRepo } from '../store'
@@ -73,16 +74,17 @@ export function Inspector(): ReactNode {
   const sha = selected.length === 1 ? selected[0] : null
   const original: Commit | undefined = useMemo(() => commits.find((commit) => commit.sha === sha), [commits, sha])
   const shown = useMemo(() => (original ? applyDraftToCommits([original], { edits: draft.edits, sequence: null })[0] : undefined), [draft.edits, original])
+  const { ignoreWhitespace } = useDiffPreferences()
 
   useEffect(() => {
     if (!sha) return
     let cancelled = false
     setDiff(null)
-    client.commitDiff(sha)
+    client.commitDiff(sha, { ignoreWhitespace })
       .then((result) => { if (!cancelled) setDiff(result) })
       .catch(() => { if (!cancelled) setDiff({ files: [], truncated: false }) })
     return () => { cancelled = true }
-  }, [client, sha])
+  }, [client, sha, ignoreWhitespace])
 
   if (selected.length > 1) return <aside className="inspector"><BulkEditor shas={selected} /></aside>
   if (!original || !shown) {
@@ -180,7 +182,7 @@ export function Inspector(): ReactNode {
           </>
         )}
       </div>
-      <div className="inspector-diff"><DiffView key={sha} diff={diff} highlight={searchMode === 'content' ? search.trim() : undefined} collapsed /></div>
+      <div className="inspector-diff"><DiffView key={sha} diff={diff} highlight={searchMode === 'content' ? search.trim() : undefined} collapsed source={{ kind: 'commit', sha: original.sha }} whitespace /></div>
     </aside>
   )
 }

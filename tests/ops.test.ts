@@ -1,14 +1,15 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { git, gitLine } from '../src/core/git'
 import {
   applyPatch, checkout, cherryPick, cloneRepository, commit, continueOperation, deleteTag, mergeBranch, resetTo, revertCommit, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
   readWorktreeConflicts, resolveWorktreeConflict, stageFiles, stashApply, stashClear, stashDrop, stashPush, unstageFiles
 } from '../src/core/ops'
-import { commitDiff, parseDiff, readBlob, readLog, readRefs, readRemotes, readStashes, readStatus, repoFingerprint, stashDiff, worktreeDiff } from '../src/core/read'
+import { commitDiff, parseDiff, readBlob, readImageVersions, readLog, readRefs, readRemotes, readStashes, readStatus, repoFingerprint, stashDiff, worktreeDiff } from '../src/core/read'
 import { applyRewrite, rewrittenTagsOnRemote } from '../src/core/rewrite'
-import { buildFilePatch } from '../src/shared/patch'
+import { buildFilePatch, buildLinesPatch } from '../src/shared/patch'
+import type { FileDiff } from '../src/shared/types'
 import { addOrigin, commitFile, createRepo, head, log, tempDir, write } from './helpers'
 
 describe('reading', () => {
@@ -413,6 +414,64 @@ describe('hunks', () => {
   })
 })
 
+describe('lines', () => {
+  const lines = (values: string[]): string => `${values.join('\n')}\n`
+  const base = ['a', 'b', 'c', 'd', 'e']
+  // One hunk that replaces b and d and adds x after e.
+  const edited = ['a', 'B', 'c', 'D', 'e', 'x']
+
+  async function edit(): Promise<string> {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', lines(base), 'base')
+    write(dir, 'a.txt', lines(edited))
+    return dir
+  }
+
+  const indexesOf = (file: FileDiff, texts: string[]): number[] =>
+    file.hunks[0].lines.flatMap((line, index) => (line.type !== 'context' && texts.includes(line.text) ? [index] : []))
+
+  it('stages only the chosen lines of a hunk', async () => {
+    const dir = await edit()
+    const [file] = (await worktreeDiff(dir, 'a.txt', false, false)).files
+    expect(file.hunks.length).toBe(1)
+    await applyPatch(dir, buildLinesPatch(file, 0, indexesOf(file, ['b', 'B'])), { cached: true })
+    expect(await git(dir, ['show', ':a.txt'])).toBe(lines(['a', 'B', 'c', 'd', 'e']))
+    expect(await git(dir, ['show', 'HEAD:a.txt'])).toBe(lines(base))
+  })
+
+  it('stages a removal without the addition next to it', async () => {
+    const dir = await edit()
+    const [file] = (await worktreeDiff(dir, 'a.txt', false, false)).files
+    await applyPatch(dir, buildLinesPatch(file, 0, indexesOf(file, ['d'])), { cached: true })
+    expect(await git(dir, ['show', ':a.txt'])).toBe(lines(['a', 'b', 'c', 'e']))
+  })
+
+  it('unstages only the chosen lines', async () => {
+    const dir = await edit()
+    await stageFiles(dir, ['a.txt'])
+    const [file] = (await worktreeDiff(dir, 'a.txt', true, false)).files
+    await applyPatch(dir, buildLinesPatch(file, 0, indexesOf(file, ['x', 'b', 'B']), true), { cached: true, reverse: true })
+    expect(await git(dir, ['show', ':a.txt'])).toBe(lines(['a', 'b', 'c', 'D', 'e']))
+    expect(await git(dir, ['diff'])).toContain('+B')
+  })
+
+  it('discards only the chosen lines from the working tree', async () => {
+    const dir = await edit()
+    const [file] = (await worktreeDiff(dir, 'a.txt', false, false)).files
+    await applyPatch(dir, buildLinesPatch(file, 0, indexesOf(file, ['d', 'D']), true), { reverse: true })
+    expect(readFileSync(join(dir, 'a.txt'), 'utf8')).toBe(lines(['a', 'B', 'c', 'd', 'e', 'x']))
+  })
+
+  it('stages a line at the end of a file with no trailing newline', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', 'one\ntwo', 'base')
+    write(dir, 'a.txt', 'ONE\ntwo\nthree')
+    const [file] = (await worktreeDiff(dir, 'a.txt', false, false)).files
+    await applyPatch(dir, buildLinesPatch(file, 0, indexesOf(file, ['two', 'three'])), { cached: true })
+    expect(await git(dir, ['show', ':a.txt'])).toBe('one\ntwo\nthree')
+  })
+})
+
 describe('conflicts in the working tree', () => {
   async function conflicted(): Promise<string> {
     const dir = await createRepo()
@@ -477,5 +536,64 @@ describe('arguments from outside', () => {
     await expect(stashDrop(dir, -1)).rejects.toThrow('Недопустимый номер записи stash')
     expect(await head(dir)).toBe(tip)
     expect(await git(dir, ['tag'])).toBe('v1\n')
+  })
+})
+
+describe('diff options', () => {
+  it('hides changes that only touch whitespace', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', 'one\ntwo\n', 'base')
+    const sha = await commitFile(dir, 'a.txt', '  one\ntwo changed\n', 'indent')
+    const [plain] = (await commitDiff(dir, sha)).files
+    const [ignoring] = (await commitDiff(dir, sha, { ignoreWhitespace: true })).files
+    expect(plain.additions).toBe(2)
+    expect(ignoring.additions).toBe(1)
+    write(dir, 'a.txt', 'one\ntwo changed\n')
+    expect((await worktreeDiff(dir, 'a.txt', false, false, { ignoreWhitespace: true })).files[0]?.hunks ?? []).toEqual([])
+  })
+})
+
+describe('images', () => {
+  const image = (text: string): string => `\x89PNG\0${text}`
+  const url = (text: string): string => `data:image/png;base64,${Buffer.from(image(text)).toString('base64')}`
+
+  it('reads both versions of an image changed in a commit', async () => {
+    const dir = await createRepo()
+    const first = await commitFile(dir, 'logo.png', image('old'), 'add')
+    const second = await commitFile(dir, 'logo.png', image('new'), 'change')
+    expect(await readImageVersions(dir, { kind: 'commit', sha: second }, 'logo.png')).toEqual({ before: url('old'), after: url('new'), tooLarge: false })
+    expect(await readImageVersions(dir, { kind: 'commit', sha: first }, 'logo.png')).toEqual({ before: null, after: url('old'), tooLarge: false })
+  })
+
+  it('reads the index and the working tree for uncommitted images', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'logo.png', image('committed'), 'add')
+    write(dir, 'logo.png', image('staged'))
+    await stageFiles(dir, ['logo.png'])
+    write(dir, 'logo.png', image('edited'))
+    write(dir, 'new.png', image('untracked'))
+    expect(await readImageVersions(dir, { kind: 'worktree', staged: true, untracked: false }, 'logo.png'))
+      .toEqual({ before: url('committed'), after: url('staged'), tooLarge: false })
+    expect(await readImageVersions(dir, { kind: 'worktree', staged: false, untracked: false }, 'logo.png'))
+      .toEqual({ before: url('staged'), after: url('edited'), tooLarge: false })
+    expect(await readImageVersions(dir, { kind: 'worktree', staged: false, untracked: true }, 'new.png'))
+      .toEqual({ before: null, after: url('untracked'), tooLarge: false })
+  })
+
+  it('reads an untracked image kept in a stash', async () => {
+    const dir = await createRepo()
+    await commitFile(dir, 'a.txt', 'base\n', 'base')
+    write(dir, 'new.png', image('stashed'))
+    await stashPush(dir, '', true)
+    const [stash] = await readStashes(dir)
+    expect(await readImageVersions(dir, { kind: 'stash', sha: stash.sha }, 'new.png')).toEqual({ before: null, after: url('stashed'), tooLarge: false })
+  })
+
+  it('refuses a working tree path outside the repository', async () => {
+    const dir = await createRepo()
+    const outside = tempDir()
+    write(outside, 'secret.png', image('outside'))
+    const path = relative(dir, join(outside, 'secret.png'))
+    await expect(readImageVersions(dir, { kind: 'worktree', staged: false, untracked: true }, path)).rejects.toThrow()
   })
 })

@@ -232,6 +232,37 @@ describe('Chronicle', () => {
     await page.locator('.side-nav button', { hasText: 'История' }).click()
   })
 
+  it('stages chosen lines, shows two columns and changed images', async () => {
+    const original = (await git(repo, ['show', 'HEAD:big.txt'])).split('\n')
+    original[5] = 'строка один'
+    original[6] = 'строка два'
+    writeFileSync(join(repo, 'big.txt'), original.join('\n'))
+    await page.locator('.side-nav button', { hasText: 'Изменения' }).click()
+    // The list still shows the file staged from the test before until the next status read.
+    await expect.poll(() => page.locator('.file-row', { hasText: 'big.txt' }).count(), { timeout: 15000 }).toBe(1)
+    await page.locator('.file-row', { hasText: 'big.txt' }).click()
+    await page.locator('.diff-line.add', { hasText: 'строка два' }).click()
+    await page.getByRole('button', { name: 'Строки в индекс: 1' }).click()
+    await expect.poll(() => git(repo, ['diff', '--cached'])).toContain('+строка два')
+    expect(await git(repo, ['diff', '--cached'])).not.toContain('+строка один')
+    expect(await git(repo, ['diff'])).toContain('+строка один')
+
+    await page.getByRole('button', { name: 'Две колонки' }).click()
+    await page.locator('.split-row .split-cell.add', { hasText: 'строка один' }).waitFor()
+    await shot('18-split')
+    await page.getByRole('button', { name: 'Одна колонка' }).click()
+    await page.locator('.split-row').first().waitFor({ state: 'detached' })
+    await git(repo, ['restore', '--staged', '--worktree', 'big.txt'])
+
+    // A 1×1 PNG, so the picture really decodes.
+    writeFileSync(join(repo, 'pixel.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'))
+    await page.locator('.file-row', { hasText: 'pixel.png' }).click()
+    await page.locator('.image-side.add figcaption', { hasText: '1 × 1' }).waitFor()
+    await page.locator('.image-side.del', { hasText: 'Файла не было' }).waitFor()
+    rmSync(join(repo, 'pixel.png'))
+    await page.locator('.side-nav button', { hasText: 'История' }).click()
+  })
+
   it('resolves a merge conflict in the working tree', async () => {
     await git(repo, ['switch', '-c', 'conflict-side'])
     await commitFile(repo, 'm.txt', 'их версия\n', 'Боковая ветка')

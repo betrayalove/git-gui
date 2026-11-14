@@ -60,7 +60,8 @@ Take the latest commits off a branch, locally and on the server, and publish the
 - **Merge and pull with foresight.** Before merging, Chronicle lists the files that will conflict. Pull offers rebase or merge, and with rebase every conflict is resolved in the preview, before anything changes. Conflicts that do happen open in a built-in editor.
 - **Worktrees:** open another branch in its own folder and switch between them in one click.
 - **Submodules** with their state, and **Git LFS** files with download and tracking.
-- Commit, push and fetch, staging of individual hunks, stashes, branches and tags, cherry-pick, revert and reset.
+- **Unified or split diffs** with syntax highlighting, an option to hide whitespace-only changes, and before-and-after views of images.
+- Commit, push and fetch, staging and discarding of individual hunks and lines, stashes, branches and tags, cherry-pick, revert and reset.
 
 ### Check dependencies
 

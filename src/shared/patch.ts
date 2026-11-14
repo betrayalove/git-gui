@@ -16,6 +16,32 @@ export function buildFilePatch(file: FileDiff, hunkIndexes: number[]): string {
   return `${lines.join('\n')}\n`
 }
 
+/**
+ * A patch of one hunk that changes only the chosen lines, given as indexes into `hunk.lines`.
+ * The other changed lines must look the way they are on the side the patch is applied to:
+ * forwards that is the old side, so unchosen removals stay as context and unchosen additions go;
+ * with `reverse` git matches the new side, so it is the other way round.
+ */
+export function buildLinesPatch(file: FileDiff, hunkIndex: number, lineIndexes: number[], reverse = false): string {
+  const chosen = new Set(lineIndexes)
+  const hunk = file.hunks[hunkIndex]
+  const lines = [...file.header, hunk.header]
+  // "\ No newline at end of file" belongs to the line before it and goes wherever that line goes.
+  let previousKept = true
+  hunk.lines.forEach((line, index) => {
+    if (line.type === 'note') {
+      if (previousKept) lines.push(`\\${line.text}`)
+    } else if (line.type === 'context' || chosen.has(index)) {
+      lines.push(`${line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' '}${line.text}`)
+      previousKept = true
+    } else {
+      previousKept = line.type === (reverse ? 'add' : 'del')
+      if (previousKept) lines.push(` ${line.text}`)
+    }
+  })
+  return `${lines.join('\n')}\n`
+}
+
 export interface HunkSelection {
   file: FileDiff
   /** Hunk indexes; an empty list selects a change with no hunks, such as a pure rename. */

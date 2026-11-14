@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { CommitIdentity, WorktreeConflict } from '../../../core/ops'
-import { buildFilePatch } from '../../../shared/patch'
+import { buildFilePatch, buildLinesPatch } from '../../../shared/patch'
 import type { ConflictResolution, DiffResult, FileDiff, FileState, StatusFile } from '../../../shared/types'
 import { ConflictEditor } from '../components/ConflictEditor'
 import { ConfirmDialog, useDialogs } from '../components/dialogs'
 import { DiffView } from '../components/DiffView'
+import { useDiffPreferences } from '../diff-prefs'
 import { Avatar, EmptyState, Icon, Modal } from '../components/ui'
 import { useRepo } from '../store'
 import { t } from '../../../shared/i18n'
@@ -135,6 +136,7 @@ export function ChangesView(): ReactNode {
   const [message, setMessage] = useState('')
   const [amend, setAmend] = useState(false)
   const [identity, setIdentity] = useState<CommitIdentity | null>(null)
+  const { ignoreWhitespace } = useDiffPreferences()
   useEffect(() => {
     void client.readIdentity().then(setIdentity).catch(() => {})
   }, [client])
@@ -172,11 +174,11 @@ export function ChangesView(): ReactNode {
       return
     }
     let cancelled = false
-    client.worktreeDiff(selection.path, selection.staged, selection.untracked)
+    client.worktreeDiff(selection.path, selection.staged, selection.untracked, { ignoreWhitespace })
       .then((result) => { if (!cancelled) setDiff(result) })
       .catch(() => { if (!cancelled) setDiff({ files: [], truncated: false }) })
     return () => { cancelled = true }
-  }, [client, selection, fingerprint, refreshCount])
+  }, [client, selection, fingerprint, refreshCount, ignoreWhitespace])
 
   const hunkAction = (label: string, action: () => Promise<void>): void => {
     void run(label, async () => {
@@ -185,22 +187,34 @@ export function ChangesView(): ReactNode {
     })
   }
 
-  const hunkControls = (file: FileDiff, index: number): ReactNode => {
-    if (!selection || selection.untracked) return null
-    const patch = buildFilePatch(file, [index])
+  // A diff that hides whitespace no longer matches the files, so its pieces cannot be applied.
+  const canApplyPieces = Boolean(selection && !selection.untracked && !ignoreWhitespace)
+
+  const hunkControls = (file: FileDiff, index: number, lines: number[]): ReactNode => {
+    if (!selection || !canApplyPieces) return null
+    const some = lines.length > 0
+    // Applied backwards, a patch is matched against its new side, so the other lines are kept the other way.
+    const forwards = some ? buildLinesPatch(file, index, lines) : buildFilePatch(file, [index])
+    const backwards = some ? buildLinesPatch(file, index, lines, true) : buildFilePatch(file, [index])
     if (selection.staged) {
-      return <button className="btn btn-small" onClick={() => hunkAction(t('Убираю кусок'), () => client.applyPatch(patch, { cached: true, reverse: true }))}>{t('Убрать из индекса')}</button>
+      return (
+        <button className="btn btn-small" onClick={() => hunkAction(some ? t('Убираю строки') : t('Убираю кусок'), () => client.applyPatch(backwards, { cached: true, reverse: true }))}>
+          {some ? t('Убрать строки из индекса: {count}', { count: lines.length }) : t('Убрать из индекса')}
+        </button>
+      )
     }
     return (
       <>
-        <button className="btn btn-small" onClick={() => hunkAction(t('Добавляю кусок'), () => client.applyPatch(patch, { cached: true }))}>{t('В индекс')}</button>
+        <button className="btn btn-small" onClick={() => hunkAction(some ? t('Добавляю строки') : t('Добавляю кусок'), () => client.applyPatch(forwards, { cached: true }))}>
+          {some ? t('Строки в индекс: {count}', { count: lines.length }) : t('В индекс')}
+        </button>
         <button className="btn btn-small btn-ghost" onClick={() => show(<ConfirmDialog
-          title={t('Отменить кусок правок')}
+          title={some ? t('Отменить выбранные строки') : t('Отменить кусок правок')}
           danger
           confirmLabel={t('Отменить правки')}
           body={t('Эти строки вернутся к версии из индекса. Это нельзя отменить.')}
-          onConfirm={() => hunkAction(t('Отменяю кусок'), () => client.applyPatch(patch, { reverse: true }))}
-        />)}>{t('Отменить')}</button>
+          onConfirm={() => hunkAction(some ? t('Отменяю строки') : t('Отменяю кусок'), () => client.applyPatch(backwards, { reverse: true }))}
+        />)}>{some ? t('Отменить строки') : t('Отменить')}</button>
       </>
     )
   }
@@ -337,7 +351,19 @@ export function ChangesView(): ReactNode {
             operation={status?.operation}
             onResolved={() => setRefreshCount((count) => count + 1)}
           />
-        ) : selection ? <DiffView diff={diff} actions={{ hunk: hunkControls }} /> : <EmptyState icon="changes" title={files.length ? t('Выбери файл') : t('Рабочая папка чистая')}>{files.length ? t('Его изменения появятся здесь.') : t('Незакоммиченных правок нет.')}</EmptyState>}
+        ) : selection ? (
+          <>
+            {ignoreWhitespace && !selection.untracked && (
+              <div className="banner"><Icon name="warning" />{t('Пробелы скрыты, поэтому куски и строки нельзя добавить в индекс или отменить.')}</div>
+            )}
+            <DiffView
+              diff={diff}
+              actions={{ hunk: hunkControls, lines: (file) => canApplyPieces && file.status === 'modified' && !file.binary }}
+              source={{ kind: 'worktree', staged: selection.staged, untracked: selection.untracked }}
+              whitespace={!selection.untracked}
+            />
+          </>
+        ) : <EmptyState icon="changes" title={files.length ? t('Выбери файл') : t('Рабочая папка чистая')}>{files.length ? t('Его изменения появятся здесь.') : t('Незакоммиченных правок нет.')}</EmptyState>}
       </div>
     </div>
   )

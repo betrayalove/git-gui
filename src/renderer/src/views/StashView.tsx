@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import type { DiffResult } from '../../../shared/types'
 import { ConfirmDialog, PromptDialog, useDialogs } from '../components/dialogs'
 import { DiffView } from '../components/DiffView'
+import { useDiffPreferences } from '../diff-prefs'
 import { EmptyState, Icon } from '../components/ui'
 import { formatRelative } from '../format'
 import { useRepo } from '../store'
@@ -14,6 +15,7 @@ export function StashView(): ReactNode {
   const [sha, setSha] = useState<string | null>(null)
   const [diff, setDiff] = useState<DiffResult | null>(null)
   const active = stashes.find((entry) => entry.sha === sha) ?? stashes[0]
+  const { ignoreWhitespace } = useDiffPreferences()
 
   useEffect(() => {
     if (!active) {
@@ -22,11 +24,11 @@ export function StashView(): ReactNode {
     }
     let cancelled = false
     setDiff(null)
-    client.stashDiff(active.sha)
+    client.stashDiff(active.sha, { ignoreWhitespace })
       .then((result) => { if (!cancelled) setDiff(result) })
       .catch(() => { if (!cancelled) setDiff({ files: [], truncated: false }) })
     return () => { cancelled = true }
-  }, [active, client])
+  }, [active, client, ignoreWhitespace])
 
   const newStash = (): void => show(<PromptDialog
     title={t('Сохранить правки в stash')}
@@ -84,7 +86,7 @@ export function StashView(): ReactNode {
             />)}>{t('Удалить')}</button>
           </div>
         )}
-        {active && <DiffView diff={diff} />}
+        {active && <DiffView diff={diff} source={{ kind: 'stash', sha: active.sha }} whitespace />}
       </div>
     </div>
   )

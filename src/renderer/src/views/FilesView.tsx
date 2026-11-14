@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { BlameResult, DiffResult, FileVersion } from '../../../shared/types'
 import { DiffView } from '../components/DiffView'
+import { useDiffPreferences } from '../diff-prefs'
 import { Avatar, EmptyState, Icon } from '../components/ui'
 import { formatFull, formatRelative, shortSha } from '../format'
 import { useRepo } from '../store'
@@ -24,6 +25,7 @@ function FileHistoryTab({ path, onBlame }: { path: string; onBlame: (rev: string
   const [active, setActive] = useState<string | null>(null)
   const [diff, setDiff] = useState<DiffResult | null>(null)
   const version = versions?.find((item) => item.commit.sha === active) ?? versions?.[0]
+  const { ignoreWhitespace } = useDiffPreferences()
 
   useEffect(() => {
     let cancelled = false
@@ -37,7 +39,7 @@ function FileHistoryTab({ path, onBlame }: { path: string; onBlame: (rev: string
     if (!version) return
     let cancelled = false
     setDiff(null)
-    client.commitDiff(version.commit.sha)
+    client.commitDiff(version.commit.sha, { ignoreWhitespace })
       .then((result) => {
         if (cancelled) return
         const files = result.files.filter((file) => file.path === version.path || file.oldPath === version.path)
@@ -45,7 +47,7 @@ function FileHistoryTab({ path, onBlame }: { path: string; onBlame: (rev: string
       })
       .catch(() => { if (!cancelled) setDiff({ files: [], truncated: false }) })
     return () => { cancelled = true }
-  }, [client, version])
+  }, [client, version, ignoreWhitespace])
 
   if (!versions) return <div className="diff-loading">{t('Читаю историю файла…')}</div>
   if (!versions.length) return <EmptyState icon="history" title={t('Истории нет')}>{t('Файл ещё не был закоммичен.')}</EmptyState>
@@ -82,7 +84,7 @@ function FileHistoryTab({ path, onBlame }: { path: string; onBlame: (rev: string
             )}
           </div>
         )}
-        <DiffView diff={diff} />
+        {version && <DiffView diff={diff} source={{ kind: 'commit', sha: version.commit.sha }} whitespace />}
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { readdir, readFile, realpath, stat } from 'node:fs/promises'
+import { join, resolve, sep } from 'node:path'
 import type {
   BlameCommit,
   BlameResult,
@@ -9,10 +9,13 @@ import type {
   Commit,
   DiffHunk,
   DiffLine,
+  DiffOptions,
   DiffResult,
+  DiffSource,
   FileDiff,
   FileState,
   FileVersion,
+  ImageVersions,
   OperationInProgress,
   RefInfo,
   RemoteInfo,
@@ -20,6 +23,8 @@ import type {
   StashEntry,
   StatusFile
 } from '../shared/types'
+import { t } from '../shared/i18n'
+import { imageType } from '../shared/images'
 import { git, gitLine, runGit } from './git'
 
 const FS = '\x1f'
@@ -500,17 +505,58 @@ export async function readBlob(cwd: string, oid: string): Promise<BlobContent> {
   }
 }
 
-export function commitDiff(cwd: string, sha: string): Promise<DiffResult> {
-  return diffOutput(cwd, ['show', '--format=', '--no-color', '--patch', '-M', '--first-parent', sha, '--'])
+const diffFlags = (options: DiffOptions): string[] => (options.ignoreWhitespace ? ['--ignore-all-space'] : [])
+
+export function commitDiff(cwd: string, sha: string, options: DiffOptions = {}): Promise<DiffResult> {
+  return diffOutput(cwd, ['show', '--format=', '--no-color', '--patch', '-M', '--first-parent', ...diffFlags(options), sha, '--'])
 }
 
-export function stashDiff(cwd: string, sha: string): Promise<DiffResult> {
-  return diffOutput(cwd, ['stash', 'show', '--no-color', '--patch', '--include-untracked', sha])
+export function stashDiff(cwd: string, sha: string, options: DiffOptions = {}): Promise<DiffResult> {
+  return diffOutput(cwd, ['stash', 'show', '--no-color', '--patch', '--include-untracked', ...diffFlags(options), sha])
 }
 
-export function worktreeDiff(cwd: string, path: string, staged: boolean, untracked: boolean): Promise<DiffResult> {
+export function worktreeDiff(cwd: string, path: string, staged: boolean, untracked: boolean, options: DiffOptions = {}): Promise<DiffResult> {
   if (untracked) {
     return diffOutput(cwd, ['diff', '--no-color', '--no-index', '--', '/dev/null', path], [1])
   }
-  return diffOutput(cwd, ['diff', '--no-color', '-M', ...(staged ? ['--cached'] : []), '--', path])
+  return diffOutput(cwd, ['diff', '--no-color', '-M', ...diffFlags(options), ...(staged ? ['--cached'] : []), '--', path])
+}
+
+const IMAGE_LIMIT = 20 * 1024 * 1024
+
+/** Contents of `rev:path`, or null when that version does not exist. */
+async function revisionBytes(cwd: string, rev: string, path: string): Promise<Buffer | null> {
+  const { stdout, code } = await runGit(cwd, ['cat-file', 'blob', `${rev}:${path}`], { okCodes: [128] })
+  return code === 0 ? stdout : null
+}
+
+/** A file of the working tree, refusing anything that resolves outside the repository. */
+async function worktreeBytes(cwd: string, path: string): Promise<Buffer | null> {
+  const root = await realpath(cwd)
+  const file = await realpath(resolve(root, path)).catch(() => null)
+  if (!file) return null
+  if (!file.startsWith(root + sep)) throw new Error(t('Файл вне репозитория: {path}', { path }))
+  return readFile(file)
+}
+
+/** Both versions of a changed image, read from where its diff came from. */
+export async function readImageVersions(cwd: string, source: DiffSource, path: string, oldPath?: string): Promise<ImageVersions> {
+  const type = imageType(path)
+  if (!type) throw new Error(t('Это не картинка: {path}', { path }))
+  const previous = oldPath ?? path
+  let pair: [Buffer | null, Buffer | null]
+  if (source.kind === 'worktree') {
+    if (source.untracked) pair = [null, await worktreeBytes(cwd, path)]
+    else if (source.staged) pair = await Promise.all([revisionBytes(cwd, 'HEAD', previous), revisionBytes(cwd, '', path)])
+    else pair = await Promise.all([revisionBytes(cwd, '', path), worktreeBytes(cwd, path)])
+  } else {
+    if (!/^[0-9a-f]{7,64}$/.test(source.sha)) throw new Error(`${t('Недопустимая ссылка')}: ${source.sha}`)
+    // A stash keeps untracked files in its third parent.
+    const after = await revisionBytes(cwd, source.sha, path) ?? (source.kind === 'stash' ? await revisionBytes(cwd, `${source.sha}^3`, path) : null)
+    pair = [await revisionBytes(cwd, `${source.sha}^1`, previous), after]
+  }
+  const tooLarge = pair.some((bytes) => bytes !== null && bytes.length > IMAGE_LIMIT)
+  const url = (bytes: Buffer | null): string | null =>
+    bytes && !tooLarge ? `data:${type};base64,${bytes.toString('base64')}` : null
+  return { before: url(pair[0]), after: url(pair[1]), tooLarge }
 }
