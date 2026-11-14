@@ -406,6 +406,13 @@ export async function readStashes(cwd: string): Promise<StashEntry[]> {
   return entries
 }
 
+/** When the repository last fetched, by the time git wrote FETCH_HEAD; null if it never did. */
+export async function lastFetchTime(cwd: string): Promise<string | null> {
+  const path = await gitLine(cwd, ['rev-parse', '--git-path', 'FETCH_HEAD'])
+  const info = await stat(resolve(cwd, path)).catch(() => null)
+  return info ? info.mtime.toISOString() : null
+}
+
 const DIFF_LIMIT = 4 * 1024 * 1024
 
 export function parseDiff(raw: string): DiffResult {

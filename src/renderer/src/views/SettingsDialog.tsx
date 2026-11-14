@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { Theme, UpdateInfo } from '../../../shared/types'
+import { AUTO_FETCH_CHOICES, type AutoFetchMinutes, type Theme, type UpdateInfo } from '../../../shared/types'
 import { appApi } from '../api'
+import { setAutoFetchMinutes, useAutoFetchMinutes } from '../auto-fetch'
 import { AccessDialog } from '../components/AccessDialog'
 import { Icon, Modal } from '../components/ui'
 import { t, type Language } from '../../../shared/i18n'
@@ -9,6 +10,11 @@ const THEMES: [Theme, string][] = [['system', t('Как в системе')], ['
 
 // Each language is named in itself, so it can be found by someone who cannot read the current one.
 const LANGUAGE_NAMES: [Language, string][] = [['ru', 'Русский'], ['en', 'English']] // i18n-ignore: native names
+
+function autoFetchLabel(minutes: AutoFetchMinutes): string {
+  if (!minutes) return t('Выкл.')
+  return minutes < 60 ? t('{count} мин', { count: minutes }) : t('{count} ч', { count: minutes / 60 })
+}
 
 export function SettingsDialog({ onClose }: { onClose: () => void }): ReactNode {
   const [busy, setBusy] = useState(false)
@@ -19,6 +25,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): ReactNode 
   const [access, setAccess] = useState(false)
   const [saved, setSaved] = useState<{ available: boolean; count: number } | null>(null)
   const [preferences, setPreferences] = useState<{ language: Language; theme: Theme } | null>(null)
+  const autoFetch = useAutoFetchMinutes()
 
   useEffect(() => {
     void appApi.autostart().then(setAutostart)
@@ -81,6 +88,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): ReactNode 
       <section className="settings-section">
         <h3>{t('Доступ к серверам')}</h3>
         <p className="hint settings-hint">{t('Приложение работает с сервером через git и SSH-ключи этого компьютера. Вход в аккаунт не нужен.')}</p>
+        <div className="settings-row">
+          <span>{t('Fetch в фоне')}</span>
+          <div className="segmented compact" role="group" aria-label={t('Fetch в фоне')}>
+            {AUTO_FETCH_CHOICES.map((minutes) => (
+              <button
+                key={minutes}
+                className={autoFetch === minutes ? 'active' : ''}
+                aria-pressed={autoFetch === minutes}
+                onClick={() => void attempt(() => setAutoFetchMinutes(minutes))}
+              >{autoFetchLabel(minutes)}</button>
+            ))}
+          </div>
+        </div>
+        <p className="hint settings-hint">{t('Открытые репозитории сами забирают новое с сервера, чтобы счётчики у Pull и Push были верными. Пароль ключа фоновый fetch не спрашивает: он берёт только сохранённый, а без него пропускается.')}</p>
         <div className="inline-actions">
           <button className="btn" onClick={() => setAccess(true)}><Icon name="key" size={14} />{t('Настроить SSH-ключ')}</button>
           {saved && saved.count > 0 && (

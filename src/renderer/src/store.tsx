@@ -5,6 +5,7 @@ import { EMPTY_DRAFT, draftChangeCount, type Draft } from '../../shared/draft'
 import { branchSettingsUrl } from '../../shared/remote-url'
 import type { Commit } from '../../shared/types'
 import { appApi, repoClient } from './api'
+import { useAutoFetchMinutes } from './auto-fetch'
 import { t } from '../../shared/i18n'
 
 const PAGE = 5000
@@ -53,7 +54,6 @@ interface RepoContextValue {
   toast: (kind: Toast['kind'], text: string, action?: Toast['action']) => void
   toasts: Toast[]
   dismissToast: (id: number) => void
-  closeRepo: () => void
   access: AccessRequest | null
   showAccess: (request: AccessRequest | null) => void
   search: string
@@ -69,6 +69,11 @@ interface RepoContextValue {
   openFile: (path: string) => void
   /** Switches the window to another repository, such as a worktree or a submodule. */
   openRepository: (path: string) => void
+  /** Whether this repository's tab is the one on screen. */
+  active: boolean
+  /** Why the last fetch nobody asked for failed, if it did. */
+  autoFetchError: string | null
+  setAutoFetchError: (error: string | null) => void
 }
 
 export type SearchMode = 'message' | 'content'
@@ -81,7 +86,12 @@ export function useRepo(): RepoContextValue {
   return value
 }
 
-export function RepoProvider({ repo, onClose, onOpen, children }: { repo: string; onClose: () => void; onOpen: (repo: string) => void; children: ReactNode }): ReactNode {
+export function RepoProvider({ repo, active, onOpen, children }: {
+  repo: string
+  active: boolean
+  onOpen: (repo: string) => void
+  children: ReactNode
+}): ReactNode {
   const client = useMemo(() => repoClient(repo), [repo])
   const [snapshot, setSnapshot] = useState<RepoSnapshot | null>(null)
   const [commits, setCommits] = useState<Commit[]>([])
@@ -111,6 +121,12 @@ export function RepoProvider({ repo, onClose, onOpen, children }: { repo: string
     setView('files')
   }, [])
   const forgeRef = useRef<RepoSnapshot['forge']>(null)
+  const [autoFetchError, setAutoFetchError] = useState<string | null>(null)
+  const autoFetchMinutes = useAutoFetchMinutes()
+  const activeRef = useRef(active)
+  activeRef.current = active
+  const busyRef = useRef(busy)
+  busyRef.current = busy
 
   const dismissToast = useCallback((id: number) => {
     setToasts((items) => items.filter((item) => item.id !== id))
@@ -199,7 +215,7 @@ export function RepoProvider({ repo, onClose, onOpen, children }: { repo: string
     // Only the changes view needs it this often. Elsewhere a look at the git folder's files says
     // whether anything moved, and edits made in another app show up once this window is focused.
     const poll = (): void => {
-      if (document.visibilityState !== 'visible') return
+      if (document.visibilityState !== 'visible' || !activeRef.current) return
       if (viewRef.current === 'changes') return refresh()
       void client.fingerprint().then((next) => {
         if (next === fingerprint) return
@@ -208,16 +224,19 @@ export function RepoProvider({ repo, onClose, onOpen, children }: { repo: string
       }).catch(() => {})
     }
     const onVisible = (): void => {
-      if (document.visibilityState === 'visible') refresh()
+      if (document.visibilityState === 'visible' && activeRef.current) refresh()
     }
-    window.addEventListener('focus', refresh)
+    const onFocus = (): void => {
+      if (activeRef.current) refresh()
+    }
+    window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisible)
     const interval = setInterval(poll, POLL_MS)
     const unsubscribe = window.chronicle.onChanged((changed) => {
       if (changed === repo) void reload()
     })
     return () => {
-      window.removeEventListener('focus', refresh)
+      window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisible)
       clearInterval(interval)
       unsubscribe()
@@ -228,6 +247,37 @@ export function RepoProvider({ repo, onClose, onOpen, children }: { repo: string
   useEffect(() => {
     if (view === 'changes') refresh()
   }, [view, refresh])
+
+  // A tab in the background does not poll, so it catches up when it comes back.
+  const wasActive = useRef(active)
+  useEffect(() => {
+    if (active && !wasActive.current) refresh()
+    wasActive.current = active
+  }, [active, refresh])
+
+  // Fetches on opening and then on a timer, so the counts on Pull and Push stay true.
+  const hasRemotes = Boolean(snapshot?.remotes.length)
+  useEffect(() => {
+    if (!autoFetchMinutes || !hasRemotes) return
+    let stopped = false
+    const fetchNow = async (): Promise<void> => {
+      // Skipped while something else runs, so it never races an operation the person started.
+      if (busyRef.current) return
+      try {
+        await client.autoFetch()
+        if (!stopped) setAutoFetchError(null)
+      } catch (error) {
+        if (!stopped) setAutoFetchError((error as Error).message)
+      }
+      if (!stopped && activeRef.current) refresh()
+    }
+    void fetchNow()
+    const interval = setInterval(() => void fetchNow(), autoFetchMinutes * 60_000)
+    return () => {
+      stopped = true
+      clearInterval(interval)
+    }
+  }, [autoFetchMinutes, client, hasRemotes, refresh])
 
   useEffect(() => {
     if (!staleNotice) return
@@ -240,8 +290,9 @@ export function RepoProvider({ repo, onClose, onOpen, children }: { repo: string
 
   const value: RepoContextValue = {
     repo, client, snapshot, commits, hasMore, loadMore, reload, draft, setDraft, draftCount,
-    view, setView, selected, setSelected, busy, run, toast, toasts, dismissToast, closeRepo: onClose,
+    view, setView, selected, setSelected, busy, run, toast, toasts, dismissToast,
     access, showAccess: setAccess, search, setSearch, searchMode, setSearchMode, jumpTo, focus, filePath, openFile,
+    active, autoFetchError, setAutoFetchError,
     openRepository: (path: string) => void appApi.openRepository(path).then(onOpen).catch((error: Error) => toast('error', error.message))
   }
   return <RepoContext.Provider value={value}>{children}</RepoContext.Provider>

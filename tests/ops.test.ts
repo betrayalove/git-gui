@@ -6,7 +6,7 @@ import {
   applyPatch, checkout, cherryPick, cloneRepository, commit, continueOperation, deleteTag, mergeBranch, resetTo, revertCommit, deleteRemoteBranch, discardFiles, fetchAll, forcePush, pull, push, pushPreview, renameBranch, renameRemoteBranch,
   readWorktreeConflicts, resolveWorktreeConflict, stageFiles, stashApply, stashClear, stashDrop, stashPush, unstageFiles
 } from '../src/core/ops'
-import { commitDiff, parseDiff, readBlob, readImageVersions, readLog, readRefs, readRemotes, readStashes, readStatus, repoFingerprint, stashDiff, worktreeDiff } from '../src/core/read'
+import { commitDiff, lastFetchTime, parseDiff, readBlob, readImageVersions, readLog, readRefs, readRemotes, readStashes, readStatus, repoFingerprint, stashDiff, worktreeDiff } from '../src/core/read'
 import { applyRewrite, rewrittenTagsOnRemote } from '../src/core/rewrite'
 import { buildFilePatch, buildLinesPatch } from '../src/shared/patch'
 import type { FileDiff } from '../src/shared/types'
@@ -253,7 +253,10 @@ describe('remote work', () => {
     await git(other, ['config', 'user.email', 'other@example.com'])
     await commitFile(other, 'b.txt', '2\n', 'two')
     await git(other, ['push', '-q', 'origin', 'main'])
+    expect(await lastFetchTime(dir)).toBeNull()
+    const before = Date.now() - 1000
     await fetchAll(dir)
+    expect(Date.parse((await lastFetchTime(dir))!)).toBeGreaterThan(before)
     expect((await readStatus(dir)).behind).toBe(1)
     await pull(dir, 'ff-only')
     expect(await log(dir)).toEqual(['two', 'one'])

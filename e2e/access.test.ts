@@ -56,7 +56,8 @@ async function launch(name: string, prepare?: (home: string) => void, knownHost 
   await git(repo, ['add', '.'])
   await git(repo, ['commit', '-q', '-m', 'Начало'])
   await git(repo, ['remote', 'add', 'origin', server!.url(bare)])
-  writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo], language: 'ru' }))
+  // A fetch the app starts by itself would reach the server before the step that each test checks.
+  writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [repo], language: 'ru', autoFetchMinutes: 0 }))
   const { SSH_AUTH_SOCK: _agent, ...env } = process.env
   const app = await electron.launch({
     args: ['out/main/index.js', `--user-data-dir=${userData}`, '--use-mock-keychain'],
@@ -326,7 +327,7 @@ describe.skipIf(!server)('Connecting without an account', () => {
     afterAll(async () => { await run?.app.close() })
 
     it('lets you choose GitHub or GitLab', async () => {
-      await run.page.locator('.repo-switch').click()
+      await run.page.getByRole('button', { name: /^Закрыть вкладку/ }).click()
       await run.page.getByRole('button', { name: 'Настройки' }).click()
       await run.page.getByRole('button', { name: 'Настроить SSH-ключ' }).click()
       await run.page.getByRole('dialog', { name: 'Подключение к github.com' }).waitFor()

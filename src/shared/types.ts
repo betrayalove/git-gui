@@ -96,6 +96,14 @@ export interface DiffResult {
   truncated: boolean
 }
 
+export const AUTO_FETCH_CHOICES = [0, 5, 10, 30, 60] as const
+export type AutoFetchMinutes = typeof AUTO_FETCH_CHOICES[number]
+export const DEFAULT_AUTO_FETCH_MINUTES: AutoFetchMinutes = 10
+
+export function isAutoFetchMinutes(value: unknown): value is AutoFetchMinutes {
+  return AUTO_FETCH_CHOICES.some((choice) => choice === value)
+}
+
 export interface DiffOptions {
   ignoreWhitespace?: boolean
 }

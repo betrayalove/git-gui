@@ -13,7 +13,7 @@ import { withoutPrompts } from '../core/git'
 import type { AccessPrompt, PromptReply, SshTarget } from '../shared/access'
 import type { Language } from '../shared/i18n'
 import type { DependencyFix, DependencyReport } from '../shared/deps'
-import type { ForgeContext, Theme, UpdateInfo, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
+import type { AutoFetchMinutes, ForgeContext, Theme, UpdateInfo, RepoStatus, RefInfo, RemoteInfo, StashEntry, JournalEntry, ScheduledPublish } from '../shared/types'
 
 const dependencyCache = (): string => join(app.getPath('userData'), 'dependencies')
 // Tests answer for all three public databases from one local server.
@@ -30,23 +30,28 @@ export interface RepoSnapshot {
   journal: JournalEntry[]
   schedules: ScheduledPublish[]
   forge: ForgeContext | null
+  /** When the repository last fetched, as an ISO date; null if it never did. */
+  lastFetch: string | null
 }
 
 /** Everything the interface may call. The first argument is always the repository path. */
 export const api = {
   snapshot: async (repo: string): Promise<RepoSnapshot> => {
     const remoteList = read.readRemotes(repo)
-    const [status, refs, remotes, stashes, journal, schedules, forgeInfo] = await Promise.all([
+    const [status, refs, remotes, stashes, journal, schedules, forgeInfo, lastFetch] = await Promise.all([
       read.readStatus(repo),
       read.readRefs(repo),
       remoteList,
       read.readStashes(repo),
       rewrite.readJournal(repo),
       schedule.listSchedules(repo),
-      remoteList.then((list) => forge.forgeContext(repo, undefined, list)).catch(() => null)
+      remoteList.then((list) => forge.forgeContext(repo, undefined, list)).catch(() => null),
+      read.lastFetchTime(repo)
     ])
-    return { status, refs, remotes, stashes, journal, schedules, forge: forgeInfo }
+    return { status, refs, remotes, stashes, journal, schedules, forge: forgeInfo, lastFetch }
   },
+  /** A fetch nobody asked for must not open a password window, so it fails instead. */
+  autoFetch: (repo: string) => withoutPrompts(() => ops.fetchAll(repo)),
   /** Cheap enough to ask every few seconds. When it changes, the snapshot is worth reading again. */
   fingerprint: read.repoFingerprint,
   readLog: read.readLog,
@@ -176,6 +181,9 @@ export interface AppApi {
   checkForUpdates(): Promise<UpdateInfo>
   updateChecksEnabled(): Promise<boolean>
   setUpdateChecksEnabled(enabled: boolean): Promise<void>
+  /** How often open repositories fetch by themselves; 0 turns it off. */
+  autoFetchMinutes(): Promise<AutoFetchMinutes>
+  setAutoFetchMinutes(minutes: AutoFetchMinutes): Promise<void>
   /** Whether the person agreed to send package names and versions to public databases. */
   dependencyConsent(): Promise<boolean>
   setDependencyConsent(agreed: boolean): Promise<void>

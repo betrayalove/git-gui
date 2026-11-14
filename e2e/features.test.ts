@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright'
@@ -194,4 +194,87 @@ describe('History tools', () => {
     await page.getByRole('button', { name: 'Русский' }).click()
     await page.locator('.side-nav button', { hasText: 'История' }).waitFor()
   })
+})
+
+describe('Tabs and background fetch', () => {
+  // The real path, as the app stores it: on macOS the temporary folder is also reachable through /var.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'chronicle-tabs-')))
+  const alpha = join(root, 'alpha')
+  const beta = join(root, 'beta')
+  const bare = join(root, 'server.git')
+  const other = join(root, 'colleague')
+  const userData = join(root, 'data')
+  let app: ElectronApplication
+  let page: Page
+
+  const setUp = async (dir: string): Promise<void> => {
+    await git(dir, ['init', '-q', '-b', 'main'])
+    for (const [key, value] of [['user.name', 'Test'], ['user.email', 'test@example.com'], ['commit.gpgsign', 'false']]) await git(dir, ['config', key, value])
+    writeFileSync(join(dir, 'readme.txt'), `${dir}\n`)
+    await git(dir, ['add', '--all'])
+    await git(dir, ['commit', '-q', '-m', 'Start'])
+  }
+  const tab = (name: string) => page.getByRole('tab', { name })
+
+  beforeAll(async () => {
+    for (const dir of [alpha, beta, bare, userData]) mkdirSync(dir)
+    await setUp(alpha)
+    await setUp(beta)
+    await git(bare, ['init', '-q', '--bare', '-b', 'main'])
+    await git(alpha, ['remote', 'add', 'origin', bare])
+    await git(alpha, ['push', '-q', '--set-upstream', 'origin', 'main'])
+    // A colleague pushes before the app starts, so only a fetch can reveal the new commit.
+    await git(root, ['clone', '-q', bare, other])
+    for (const [key, value] of [['user.name', 'Colleague'], ['user.email', 'c@example.com']]) await git(other, ['config', key, value])
+    writeFileSync(join(other, 'news.txt'), 'news\n')
+    await git(other, ['add', '--all'])
+    await git(other, ['commit', '-q', '-m', 'Colleague adds news'])
+    await git(other, ['push', '-q', 'origin', 'main'])
+
+    writeFileSync(join(userData, 'state.json'), JSON.stringify({ recent: [alpha, beta], updateChecks: false, language: 'ru', autoFetchMinutes: 5 }))
+    app = await electron.launch({
+      args: ['out/main/index.js', `--user-data-dir=${userData}`, '--use-mock-keychain'],
+      env: { ...process.env, ELECTRON_RENDERER_URL: '' },
+      colorScheme: null
+    })
+    page = await app.firstWindow()
+    await page.setViewportSize({ width: 1440, height: 900 })
+  })
+
+  afterAll(async () => {
+    await app?.close()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('fetches by itself after opening, so Pull shows the new commit', async () => {
+    await page.locator('.recent-row b', { hasText: /^alpha$/ }).click()
+    await page.getByRole('button', { name: /Pull/ }).locator('.count', { hasText: '1' }).waitFor()
+    expect(await page.getByRole('button', { name: /Fetch/ }).getAttribute('title')).toMatch(/^Последний fetch: /)
+  })
+
+  it('keeps each repository in its own tab with its own state', async () => {
+    await page.locator('.side-nav button', { hasText: 'Изменения' }).click()
+    await page.getByRole('button', { name: 'Новая вкладка' }).click()
+    await page.locator('.recent-row b', { hasText: /^beta$/ }).click()
+    await expect.poll(() => page.getByRole('tab').allInnerTexts()).toEqual(['alpha', 'beta'])
+    await page.locator('.commit-row', { hasText: 'Start' }).waitFor()
+    await shot('tabs')
+
+    await tab('alpha').click()
+    await page.locator('.side-nav button.active', { hasText: 'Изменения' }).waitFor()
+
+    // Opening a repository that already has a tab goes to that tab.
+    await page.getByRole('button', { name: 'Новая вкладка' }).click()
+    await page.locator('.recent-row b', { hasText: /^beta$/ }).click()
+    await expect.poll(() => page.getByRole('tab').allInnerTexts()).toEqual(['alpha', 'beta'])
+    expect(await tab('beta').getAttribute('aria-selected')).toBe('true')
+
+    await page.getByRole('button', { name: 'Закрыть вкладку beta' }).click()
+    await expect.poll(() => page.getByRole('tab').allInnerTexts()).toEqual(['alpha'])
+    await page.locator('.side-nav button.active', { hasText: 'Изменения' }).waitFor()
+  })
+
+  async function shot(name: string): Promise<void> {
+    if (shots) await page.screenshot({ path: join(shots, `43-${name}.png`) })
+  }
 })

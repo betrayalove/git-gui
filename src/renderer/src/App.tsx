@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { buildPlan, EMPTY_DRAFT } from '../../shared/draft'
 import type { UpdateInfo } from '../../shared/types'
 import { appApi, platform } from './api'
@@ -8,7 +8,7 @@ import { PullDialog } from './components/MergeDialogs'
 import { PromptHost } from './components/PromptHost'
 import { Sidebar } from './components/Sidebar'
 import { Icon } from './components/ui'
-import { plural } from './format'
+import { formatRelative, plural } from './format'
 import { RepoProvider, useRepo } from './store'
 import { ChangesView } from './views/ChangesView'
 import { DependenciesView } from './views/DependenciesView'
@@ -26,24 +26,73 @@ function baseName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 }
 
+interface Tab {
+  id: number
+  /** Null while the tab shows the start screen. */
+  repo: string | null
+}
+
+interface TabsValue {
+  tabs: Tab[]
+  activeId: number
+  select: (id: number) => void
+  close: (id: number) => void
+  add: () => void
+}
+
+const TabsContext = createContext<TabsValue | null>(null)
+
+function useTabs(): TabsValue {
+  const value = useContext(TabsContext)
+  if (!value) throw new Error('useTabs used outside the tabs')
+  return value
+}
+
+function TabStrip(): ReactNode {
+  const { tabs, activeId, select, close, add } = useTabs()
+  return (
+    <div className="tabs" role="tablist" aria-label={t('Открытые репозитории')}>
+      {tabs.map((tab) => {
+        const label = tab.repo ? baseName(tab.repo) : t('Новая вкладка')
+        return (
+          <div key={tab.id} className={`tab ${tab.id === activeId ? 'active' : ''}`}>
+            <button role="tab" aria-selected={tab.id === activeId} className="repo-switch" title={tab.repo ?? undefined} onClick={() => select(tab.id)}>
+              <Icon name="folder" size={14} />
+              <b>{label}</b>
+            </button>
+            <button className="tab-close" aria-label={t('Закрыть вкладку {name}', { name: label })} title={t('Закрыть вкладку')} onClick={() => close(tab.id)}>
+              <Icon name="close" size={11} />
+            </button>
+          </div>
+        )
+      })}
+      <button className="icon-btn tab-add" aria-label={t('Новая вкладка')} title={t('Открыть ещё один репозиторий')} onClick={add}><Icon name="plus" size={14} /></button>
+    </div>
+  )
+}
+
+function fetchTitle(lastFetch: string | null | undefined, error: string | null): string {
+  const last = lastFetch ? t('Последний fetch: {time}', { time: formatRelative(lastFetch) }) : t('Fetch ещё не запускался')
+  return error ? `${last}\n${t('Фоновый fetch не удался: {reason}', { reason: error.split('\n')[0] })}` : last
+}
+
 function Toolbar(): ReactNode {
-  const { repo, snapshot, client, run, toast, closeRepo, busy, view, search, setSearch, searchMode, setSearchMode } = useRepo()
+  const { snapshot, client, run, toast, busy, view, search, setSearch, searchMode, setSearchMode, autoFetchError, setAutoFetchError, active } = useRepo()
   const { show, close } = useDialogs()
   const status = snapshot?.status
   const lastApplied = [...(snapshot?.journal ?? [])].reverse().find((entry) => entry.state === 'applied')
   return (
     <header className={`toolbar platform-${platform}`}>
-      <button className="repo-switch" onClick={closeRepo} title={repo}>
-        <Icon name="folder" size={14} />
-        <b>{baseName(repo)}</b>
-      </button>
+      {/* Every tab draws its toolbar; only the one on screen carries the tabs, so they exist once. */}
+      {active && <TabStrip />}
       <span className="branch-name">
         <Icon name="branch" size={13} />
         {status?.head ?? (status?.detached ? `HEAD ${status.headSha?.slice(0, 7)}` : '…')}
       </span>
       <div className="toolbar-actions">
-        <button className="tool" onClick={() => void run(t('Обновляю'), async () => {
+        <button className={`tool ${autoFetchError ? 'tool-warn' : ''}`} title={fetchTitle(snapshot?.lastFetch, autoFetchError)} onClick={() => void run(t('Обновляю'), async () => {
           await client.fetchAll()
+          setAutoFetchError(null)
           toast('success', t('Данные с сервера обновлены'))
         })}><Icon name="fetch" />Fetch</button>
         <button
@@ -121,10 +170,11 @@ function Toasts(): ReactNode {
 }
 
 function Workspace(): ReactNode {
-  const { view, snapshot, client, run, repo, access, showAccess, reload } = useRepo()
+  const { view, snapshot, client, run, repo, access, showAccess, reload, active } = useRepo()
   const lastApplied = [...(snapshot?.journal ?? [])].reverse().find((entry) => entry.state === 'applied')
 
   useEffect(() => {
+    if (!active) return
     const onKey = (event: KeyboardEvent): void => {
       const target = event.target as HTMLElement
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
@@ -135,7 +185,7 @@ function Workspace(): ReactNode {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [client, lastApplied, run])
+  }, [active, client, lastApplied, run])
 
   return (
     <div className="workspace">
@@ -194,39 +244,82 @@ function UpdateNotice(): ReactNode {
   )
 }
 
-const OPEN_REPO_KEY = 'chronicle:open-repository'
+const TABS_KEY = 'chronicle:tabs'
 
-/** The open repository survives a reload of the window, such as after switching the language. */
-function readOpenRepo(): string | null {
+/** The open tabs survive a reload of the window, such as after switching the language. */
+function readTabs(): { tabs: Tab[]; activeId: number } {
   try {
-    return sessionStorage.getItem(OPEN_REPO_KEY)
+    const saved = JSON.parse(sessionStorage.getItem(TABS_KEY) ?? 'null') as { repos: (string | null)[]; active: number } | null
+    if (saved?.repos.length) {
+      return { tabs: saved.repos.map((repo, id) => ({ id, repo })), activeId: Math.min(saved.active, saved.repos.length - 1) }
+    }
   } catch {
-    return null
+    // Without storage a reload only returns to the start screen.
   }
+  return { tabs: [{ id: 0, repo: null }], activeId: 0 }
 }
 
+let nextTabId = 1000
+
 export function App(): ReactNode {
-  const [repo, setRepo] = useState<string | null>(readOpenRepo)
-  const close = useCallback(() => setRepo(null), [])
+  const [{ tabs, activeId }, setState] = useState(readTabs)
   useEffect(() => {
     try {
-      if (repo) sessionStorage.setItem(OPEN_REPO_KEY, repo)
-      else sessionStorage.removeItem(OPEN_REPO_KEY)
+      sessionStorage.setItem(TABS_KEY, JSON.stringify({ repos: tabs.map((tab) => tab.repo), active: tabs.findIndex((tab) => tab.id === activeId) }))
     } catch {
-      // Without storage a reload only returns to the start screen.
+      // See readTabs.
     }
-  }, [repo])
+  }, [tabs, activeId])
+
+  const select = useCallback((id: number) => setState((current) => ({ ...current, activeId: id })), [])
+  const close = useCallback((id: number) => setState((current) => {
+    const index = current.tabs.findIndex((tab) => tab.id === id)
+    const rest = current.tabs.filter((tab) => tab.id !== id)
+    if (!rest.length) {
+      const blank = { id: nextTabId++, repo: null }
+      return { tabs: [blank], activeId: blank.id }
+    }
+    const activeId = current.activeId === id ? rest[Math.min(index, rest.length - 1)].id : current.activeId
+    return { tabs: rest, activeId }
+  }), [])
+  const add = useCallback(() => setState((current) => {
+    const blank = current.tabs.find((tab) => !tab.repo)
+    if (blank) return { ...current, activeId: blank.id }
+    const tab = { id: nextTabId++, repo: null }
+    return { tabs: [...current.tabs, tab], activeId: tab.id }
+  }), [])
+  // A repository open in another tab is shown there rather than twice.
+  const openIn = useCallback((id: number, repo: string) => setState((current) => {
+    const existing = current.tabs.find((tab) => tab.repo === repo)
+    if (existing) {
+      const opener = current.tabs.find((tab) => tab.id === id)
+      const tabs = opener?.repo ? current.tabs : current.tabs.filter((tab) => tab.id !== id)
+      return { tabs, activeId: existing.id }
+    }
+    return { ...current, tabs: current.tabs.map((tab) => (tab.id === id ? { ...tab, repo } : tab)) }
+  }), [])
+
+  const value: TabsValue = { tabs, activeId, select, close, add }
   return (
-    <>
-      {repo ? (
-        <RepoProvider key={repo} repo={repo} onClose={close} onOpen={setRepo}>
-          <DialogProvider>
-            <Workspace />
-          </DialogProvider>
-        </RepoProvider>
-      ) : <Welcome onOpen={setRepo} />}
+    <TabsContext.Provider value={value}>
+      {tabs.map((tab) => (
+        <div key={tab.id} className="tab-page" hidden={tab.id !== activeId}>
+          {tab.repo ? (
+            <RepoProvider key={tab.repo} repo={tab.repo} active={tab.id === activeId} onOpen={(repo) => openIn(tab.id, repo)}>
+              <DialogProvider>
+                <Workspace />
+              </DialogProvider>
+            </RepoProvider>
+          ) : tabs.length > 1 ? (
+            <div className="workspace">
+              <header className={`toolbar platform-${platform}`}><TabStrip /></header>
+              <Welcome onOpen={(repo) => openIn(tab.id, repo)} />
+            </div>
+          ) : <Welcome onOpen={(repo) => openIn(tab.id, repo)} />}
+        </div>
+      ))}
       <UpdateNotice />
       <PromptHost />
-    </>
+    </TabsContext.Provider>
   )
 }

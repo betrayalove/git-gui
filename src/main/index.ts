@@ -17,7 +17,7 @@ import { checkForUpdate } from '../core/updates'
 import { api, type AppApi, type ApiMethod } from './api'
 import { PassphraseStore } from './passphrases'
 import { isLanguage, language, languageForLocale, setLanguage, t, type Language } from '../shared/i18n'
-import { isTheme, type Theme } from '../shared/types'
+import { DEFAULT_AUTO_FETCH_MINUTES, isAutoFetchMinutes, isTheme, type AutoFetchMinutes, type Theme } from '../shared/types'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 // The portable Windows build unpacks to a temporary folder and names its real location here.
@@ -49,6 +49,7 @@ let recent: string[] = []
 const HIDDEN_FLAG = '--chronicle-hidden'
 let startedHidden = false
 let updateChecks = true
+let autoFetchMinutes: AutoFetchMinutes = DEFAULT_AUTO_FETCH_MINUTES
 let dependencyConsent = false
 /** Null until the person picks one: until then the language follows the system. */
 let chosenLanguage: Language | null = null
@@ -63,10 +64,11 @@ let broker: PromptBroker
 async function loadState(): Promise<void> {
   try {
     const state = JSON.parse(await readFile(statePath(), 'utf8')) as {
-      recent?: string[]; known?: string[]; updateChecks?: boolean; dependencyConsent?: boolean; language?: unknown; theme?: unknown
+      recent?: string[]; known?: string[]; updateChecks?: boolean; dependencyConsent?: boolean; language?: unknown; theme?: unknown; autoFetchMinutes?: unknown
     }
     recent = state.recent ?? []
     updateChecks = state.updateChecks ?? true
+    autoFetchMinutes = isAutoFetchMinutes(state.autoFetchMinutes) ? state.autoFetchMinutes : DEFAULT_AUTO_FETCH_MINUTES
     dependencyConsent = state.dependencyConsent ?? false
     chosenLanguage = isLanguage(state.language) ? state.language : null
     theme = isTheme(state.theme) ? state.theme : 'system'
@@ -82,7 +84,7 @@ async function loadState(): Promise<void> {
 async function saveState(): Promise<void> {
   await mkdir(app.getPath('userData'), { recursive: true })
   // `known` outlives the recent list, so a pending publish still runs after its repository scrolls off.
-  await writeFile(statePath(), JSON.stringify({ recent, known: [...openRepos], updateChecks, dependencyConsent, language: chosenLanguage ?? undefined, theme }, null, 2))
+  await writeFile(statePath(), JSON.stringify({ recent, known: [...openRepos], updateChecks, dependencyConsent, language: chosenLanguage ?? undefined, theme, autoFetchMinutes }, null, 2))
 }
 
 async function rememberRepo(path: string): Promise<string> {
@@ -305,6 +307,12 @@ const appHandlers: AppApi = {
   updateChecksEnabled: async () => updateChecks && app.isPackaged,
   setUpdateChecksEnabled: async (enabled) => {
     updateChecks = enabled
+    await saveState()
+  },
+  autoFetchMinutes: async () => autoFetchMinutes,
+  setAutoFetchMinutes: async (minutes) => {
+    if (!isAutoFetchMinutes(minutes)) throw new Error(t('Недопустимый интервал: {value}', { value: String(minutes) }))
+    autoFetchMinutes = minutes
     await saveState()
   },
   dependencyConsent: async () => dependencyConsent,

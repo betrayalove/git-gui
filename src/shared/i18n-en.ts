@@ -126,6 +126,7 @@ export const EN: Record<string, string> = {
   'Репозиторий не открыт': 'The repository is not open',
   'Неизвестный язык: {next}': 'Unknown language: {next}',
   'Неизвестная тема: {next}': 'Unknown theme: {next}',
+  'Недопустимый интервал: {value}': 'Invalid interval: {value}',
   'Автозапуск доступен только в установленном приложении': 'Starting at login is only available in the installed app',
   'Неизвестный метод: {method}': 'Unknown method: {method}',
   'Git не подходит': 'Git does not fit',
@@ -893,5 +894,18 @@ export const EN: Record<string, string> = {
   'Отменить выбранные строки': 'Discard the selected lines',
   'Отменяю строки': 'Discarding lines',
   'Отменить строки': 'Discard lines',
-  'Пробелы скрыты, поэтому куски и строки нельзя добавить в индекс или отменить.': 'Whitespace is hidden, so hunks and lines cannot be staged or discarded.'
+  'Пробелы скрыты, поэтому куски и строки нельзя добавить в индекс или отменить.': 'Whitespace is hidden, so hunks and lines cannot be staged or discarded.',
+  'Открытые репозитории': 'Open repositories',
+  'Новая вкладка': 'New tab',
+  'Закрыть вкладку {name}': 'Close the {name} tab',
+  'Закрыть вкладку': 'Close tab',
+  'Открыть ещё один репозиторий': 'Open another repository',
+  'Последний fetch: {time}': 'Last fetch: {time}',
+  'Fetch ещё не запускался': 'Not fetched yet',
+  'Фоновый fetch не удался: {reason}': 'Background fetch failed: {reason}',
+  'Выкл.': 'Off',
+  '{count} мин': '{count} min',
+  '{count} ч': '{count} h',
+  'Fetch в фоне': 'Background fetch',
+  'Открытые репозитории сами забирают новое с сервера, чтобы счётчики у Pull и Push были верными. Пароль ключа фоновый fetch не спрашивает: он берёт только сохранённый, а без него пропускается.': 'Open repositories fetch from the server by themselves, so the counts on Pull and Push stay true. A background fetch never asks for a key passphrase: it only uses a saved one and is skipped without it.'
 }
