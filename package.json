@@ -1,7 +1,7 @@
 {
   "name": "chronicle",
   "productName": "Chronicle",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Visual Git history editor for macOS, Windows and Linux",
   "homepage": "https://github.com/betrayalove/git-gui#readme",
