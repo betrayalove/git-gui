@@ -6,6 +6,7 @@ import type { ConflictResolution, DiffResult, FileDiff, FileState, StatusFile } 
 import { ConflictEditor } from '../components/ConflictEditor'
 import { ConfirmDialog, useDialogs } from '../components/dialogs'
 import { DiffView } from '../components/DiffView'
+import { SigningDialog, signingSummary, useSigning } from '../components/Signing'
 import { useDiffPreferences } from '../diff-prefs'
 import { Avatar, ContextMenu, EmptyState, Icon, Modal, type MenuItem } from '../components/ui'
 import { useRepo } from '../store'
@@ -143,6 +144,7 @@ export function ChangesView(): ReactNode {
     void client.readIdentity().then(setIdentity).catch(() => {})
   }, [client])
   const editIdentity = (): void => show(<IdentityDialog initial={identity} onSaved={setIdentity} />)
+  const signing = useSigning()
   const status = snapshot?.status
   const files = status?.files ?? []
   const stagedFiles = files.filter((file) => file.staged)
@@ -352,6 +354,11 @@ export function ChangesView(): ReactNode {
               ? <><Avatar name={identity.name} email={identity.email} size={16} /><span className="truncate">{identity.name} &lt;{identity.email}&gt;</span></>
               : <span className="danger-text">{t('Укажи автора коммитов')}</span>}
           </button>
+          {signing && (
+            <button className="commit-author" title={t('Изменить для этого репозитория')} onClick={() => show(<SigningDialog />)}>
+              <Icon name="shield" size={13} /><span className="truncate">{signingSummary(signing)}</span>
+            </button>
+          )}
           <textarea
             rows={4}
             value={message}

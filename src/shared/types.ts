@@ -374,6 +374,38 @@ export interface ForgeContext {
   url: string
 }
 
+export type SignatureState = 'none' | 'good' | 'untrusted' | 'bad' | 'expired' | 'revoked' | 'unknown-key' | 'unverifiable'
+
+export interface SignatureInfo {
+  state: SignatureState
+  format?: 'ssh' | 'openpgp' | 'x509'
+  /** Who signed, as the key's user ID or the allowed signer's name. */
+  signer?: string
+  /** The key ID or fingerprint. */
+  key?: string
+}
+
+export interface SigningState {
+  /** What this repository's own settings say; "inherit" leaves it to the global git settings. */
+  choice: 'inherit' | 'off' | 'ssh' | 'openpgp'
+  /** Whether new commits will be signed, wherever the setting comes from. */
+  enabled: boolean
+  format: string
+  key: string
+  /** What the global git settings alone would do. */
+  inherited: { enabled: boolean; format: string }
+}
+
+export type SigningChoice =
+  | { mode: 'inherit' }
+  | { mode: 'off' }
+  | { mode: 'ssh' | 'openpgp'; key: string }
+
+export interface GpgKey {
+  id: string
+  uid: string
+}
+
 export interface SigningSetup {
   available: boolean
   format: string

@@ -7,6 +7,7 @@ import * as ops from '../core/ops'
 import * as read from '../core/read'
 import * as rewrite from '../core/rewrite'
 import * as schedule from '../core/schedule'
+import * as signing from '../core/signing'
 import * as ssh from '../core/ssh'
 import * as workspace from '../core/workspace'
 import { withoutPrompts } from '../core/git'
@@ -135,6 +136,10 @@ export const api = {
   purgeBackups: rewrite.purgeBackups,
   rewrittenTagsOnRemote: rewrite.rewrittenTagsOnRemote,
   signingSetup: rewrite.signingSetup,
+  readSignature: signing.readSignature,
+  readSigning: signing.readSigning,
+  setSigning: signing.setSigning,
+  listGpgKeys: signing.listGpgKeys,
   rebaseRange: rewrite.rebaseRange,
 
   schedulePublish: schedule.schedulePublish,

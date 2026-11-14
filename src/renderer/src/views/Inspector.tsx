@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { applyDraftToCommits } from '../../../shared/draft'
 import type { Commit, CommitEdit, DiffResult } from '../../../shared/types'
 import { DiffView } from '../components/DiffView'
+import { SignatureBadge } from '../components/Signing'
 import { useDiffPreferences } from '../diff-prefs'
 import { Avatar, EmptyState, Icon } from '../components/ui'
 import { formatFull, isoToLocalInput, offsetOf, plural, shiftIso, shortSha } from '../format'
@@ -132,6 +133,7 @@ export function Inspector(): ReactNode {
           <div className="truncate">
             <code title={original.sha}>{shortSha(original.sha)}</code>
             <div className="muted">{formatFull(shown.authorDate)}</div>
+            <SignatureBadge sha={original.sha} />
           </div>
           {draft.edits[original.sha] && Object.keys(draft.edits[original.sha]).length > 0 && (
             <button className="btn btn-ghost btn-small" onClick={reset}><Icon name="undo" size={13} />{t('Сбросить')}</button>

@@ -320,6 +320,42 @@ describe.skipIf(!server)('Connecting without an account', () => {
     })
   })
 
+  describe('signing commits with a key that has a password', () => {
+    const passphrase = 'пароль подписи'
+    let run: Launched
+
+    beforeAll(async () => { run = await launch('signing', (home) => { makeKey(home, 'id_ed25519', passphrase, 'mira@laptop') }) })
+    afterAll(async () => { await run?.app.close() })
+
+    it('signs for this repository only and asks for the key password through the app', async () => {
+      await run.page.keyboard.press('ControlOrMeta+2')
+      await run.page.getByRole('button', { name: 'Коммиты не подписываются' }).click()
+      const dialog = run.page.getByRole('dialog', { name: 'Подпись коммитов' })
+      await dialog.getByRole('button', { name: 'SSH-ключом' }).click()
+      await dialog.locator('.key-option', { hasText: 'id_ed25519' }).click()
+      if (shots) await run.page.screenshot({ path: join(shots, '39-signing.png') })
+      await dialog.getByRole('button', { name: 'Сохранить' }).click()
+      await run.page.getByRole('button', { name: 'Подпись SSH-ключом' }).waitFor()
+      expect(await gitLine(run.repo, ['config', '--local', 'user.signingkey'])).toBe(join(run.home, '.ssh', 'id_ed25519.pub'))
+      expect(readFileSync(join(run.repo, '..', 'gitconfig'), 'utf8')).not.toContain('signingkey')
+
+      writeFileSync(join(run.repo, 'signed.txt'), 'signed\n')
+      await run.page.locator('.file-row', { hasText: 'signed.txt' }).waitFor()
+      await run.page.getByRole('button', { name: 'Добавить все' }).click()
+      await run.page.getByLabel('Сообщение коммита').fill('Подписанный коммит')
+      await run.page.getByRole('button', { name: 'Коммит', exact: true }).click()
+      const prompt = run.page.getByRole('dialog', { name: 'Пароль SSH-ключа' })
+      await prompt.getByLabel('Пароль ключа').fill(passphrase)
+      await prompt.getByRole('button', { name: 'Продолжить' }).click()
+      await run.page.getByText('Коммит создан').waitFor()
+      expect(await git(run.repo, ['cat-file', 'commit', 'HEAD'])).toContain('gpgsig')
+
+      await run.page.keyboard.press('ControlOrMeta+1')
+      await run.page.locator('.commit-row', { hasText: 'Подписанный коммит' }).click()
+      await run.page.locator('.signature', { hasText: 'Подписан, проверить нельзя' }).waitFor()
+    })
+  })
+
   describe('from the settings, with no repository', () => {
     let run: Launched
 

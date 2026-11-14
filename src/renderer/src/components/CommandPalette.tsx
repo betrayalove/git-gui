@@ -5,6 +5,7 @@ import { shortcut } from '../keys'
 import { useRepo } from '../store'
 import { useTabs } from '../tabs'
 import { SettingsDialog } from '../views/SettingsDialog'
+import { SigningDialog } from './Signing'
 import { NewBranchDialog, NewStashDialog, PushDialog, useDialogs } from './dialogs'
 import { PullDialog } from './MergeDialogs'
 import { VIEWS } from './Sidebar'
@@ -37,6 +38,7 @@ function useCommands(focusSearch: () => void): Command[] {
       id: 'undo', title: t('Отменить последнюю правку истории'), group: actions, shortcut: shortcut('Z'),
       run: () => void run(t('Отменяю'), () => client.undoEntry(lastApplied.id))
     }] : []),
+    { id: 'signing', title: t('Подпись коммитов…'), group: actions, run: () => show(<SigningDialog />) },
     { id: 'settings', title: t('Настройки'), group: actions, shortcut: shortcut(','), run: () => show(<SettingsDialog onClose={close} />) },
     ...(snapshot?.refs ?? [])
       .filter((ref) => ref.kind === 'branch' && !ref.isHead)

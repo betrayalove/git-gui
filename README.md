@@ -61,6 +61,7 @@ Take the latest commits off a branch, locally and on the server, and publish the
 - **Worktrees:** open another branch in its own folder and switch between them in one click.
 - **Submodules** with their state, and **Git LFS** files with download and tracking.
 - **Tabs:** several repositories in one window, each with its own draft and view. **Background fetch** every few minutes keeps the counts on Pull and Push current and never asks for a password.
+- **Commit signing** with an SSH or GPG key for one repository, without touching global git settings. The app asks for an SSH key passphrase itself. The inspector shows whether a commit is signed and whether the signature holds.
 - **Command palette** on ⌘K or Ctrl+K, and shortcuts: views on ⌘1–⌘7, history search ⌘F, settings ⌘,, new tab ⌘T, switching tabs with Ctrl+Tab. Windows and Linux use Ctrl in place of ⌘.
 - **.gitignore without editing it by hand:** right-click a new file in Changes to ignore the file, its folder or every file with its extension.
 - **Unified or split diffs** with syntax highlighting, an option to hide whitespace-only changes, and before-and-after views of images.

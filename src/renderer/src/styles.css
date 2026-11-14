@@ -154,6 +154,14 @@ h1, h2, h3, h4, p { margin: 0; }
   font-size: 11px; font-weight: 500; background: var(--surface-3); color: var(--text-2); white-space: nowrap;
 }
 .pill.small { height: 16px; padding: 0 6px; font-size: 10px; }
+.pill.signature { gap: 4px; height: 18px; margin-top: 4px; font-size: 10.5px; }
+.signature-good { background: var(--add-soft); color: var(--add); }
+.signature-bad { background: var(--del-soft); color: var(--del); }
+.signing-modes { margin-bottom: 10px; }
+.key-list { display: flex; flex-direction: column; gap: 2px; }
+.key-option { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px; border-radius: 7px; }
+.key-option:hover { background: var(--surface-3); }
+.key-option input { margin: 0; flex: none; accent-color: var(--accent); }
 .pill.warn, .pill.state-pending { background: var(--draft-soft); color: var(--draft); }
 .pill.state-done { background: var(--add-soft); color: var(--add); }
 .pill.state-failed { background: var(--del-soft); color: var(--del); }
