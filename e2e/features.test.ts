@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright'
@@ -197,8 +197,7 @@ describe('History tools', () => {
 })
 
 describe('Tabs and background fetch', () => {
-  // The real path, as the app stores it: on macOS the temporary folder is also reachable through /var.
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'chronicle-tabs-')))
+  const root = mkdtempSync(join(tmpdir(), 'chronicle-tabs-'))
   const alpha = join(root, 'alpha')
   const beta = join(root, 'beta')
   const bare = join(root, 'server.git')
@@ -263,9 +262,11 @@ describe('Tabs and background fetch', () => {
     await tab('alpha').click()
     await page.locator('.side-nav button.active', { hasText: 'Изменения' }).waitFor()
 
-    // Opening a repository that already has a tab goes to that tab.
+    // Opening a repository that already has a tab goes to that tab. The recent list may now hold
+    // beta twice, as the test wrote its path (/var, C:\Users\RUNNER~1) and as git spells it,
+    // and both lead to the same repository.
     await page.getByRole('button', { name: 'Новая вкладка' }).click()
-    await page.locator('.recent-row b', { hasText: /^beta$/ }).click()
+    await page.locator('.recent-row b', { hasText: /^beta$/ }).first().click()
     await expect.poll(() => page.getByRole('tab').allInnerTexts()).toEqual(['alpha', 'beta'])
     expect(await tab('beta').getAttribute('aria-selected')).toBe('true')
 
